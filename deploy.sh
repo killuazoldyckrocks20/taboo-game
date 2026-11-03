@@ -25,7 +25,14 @@ if [ ! -d ".git" ]; then
   exit 1
 fi
 
-# 2. Bump Service Worker cache version in sw.js to invalidate old browser caches
+# 2. Check if there are any code changes before bumping cache
+CHANGED_FILES=$(git status --porcelain | grep -v "sw.js" || true)
+if [ -z "$CHANGED_FILES" ] && [ -z "$1" ]; then
+  echo "ℹ️ No code changes detected. Everything is already up to date!"
+  exit 0
+fi
+
+# 3. Bump Service Worker cache version in sw.js to invalidate old browser caches
 if [ -f "sw.js" ]; then
   echo "📦 Updating Service Worker cache version in sw.js..."
   python3 - << 'EOF'
