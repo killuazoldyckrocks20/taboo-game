@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>TABOO! - The Party Word Guessing Game</title>
+  <meta name="description" content="A fully functional, modern, ultra-responsive Taboo party game web application with 320+ cards, authentic buzzers, team management, dispute room, and custom card builder.">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Confetti Canvas -->
+  <canvas id="confetti-canvas"></canvas>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Main Mobile/Tablet Enclosure -->
+  <div id="app-container">
+
+    <!-- Global App Header -->
+    <header class="app-header">
+      <div class="brand-title">
+        <span>TABOO!</span>
+        <span class="brand-badge">PARTY</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-open-buzzer" class="icon-btn" title="Giant Referee Buzzer" aria-label="Buzzer">🚨</button>
+        <button id="btn-mute-toggle" class="icon-btn" title="Toggle Sound" aria-label="Mute">
+          <span id="mute-icon">🔊</span>
+        </button>
+        <button id="btn-open-rules" class="icon-btn" title="How to Play" aria-label="Rules">📖</button>
+        <button id="btn-open-cards-mgr" class="icon-btn" title="Custom Cards" aria-label="Deck Manager">🃏</button>
+      </div>
+    </header>
+
+    <!-- Viewport Container with Multiple Screens -->
+    <main class="screens-viewport">
+
+      <!-- ========================================================
+           SCREEN 1: WELCOME / MAIN MENU
+           ======================================================== -->
+      <section id="screen-welcome" class="screen active">
+        <div class="welcome-hero">
+          <div class="hero-logo-box">
+            <div class="hero-logo-card">
+              <div class="hero-card-word">PENGUIN</div>
+              <div class="hero-taboo-list">
+                <div class="hero-taboo-item">BIRD</div>
+                <div class="hero-taboo-item">ICE</div>
+                <div class="hero-taboo-item">COLD</div>
+                <div class="hero-taboo-item">WADDLE</div>
+                <div class="hero-taboo-item">TUXEDO</div>
+              </div>
+            </div>
+          </div>
+
+          <h1 class="welcome-title">THE GAME OF UNSPEAKABLE FUN!</h1>
+          <p class="welcome-subtitle">
+            Get your team to guess the word, but don't say any of the forbidden <strong>Taboo words</strong>!
+          </p>
+
+          <div class="welcome-nav-buttons">
+            <button id="btn-nav-play" class="btn-primary">
+              <span>🎮 START GAME</span>
+            </button>
+            <button id="btn-nav-quick-buzzer" class="btn-secondary">
+              <span>🚨 REFEREE BUZZER PAD</span>
+            </button>
+            <button id="btn-nav-custom" class="btn-secondary">
+              <span>🃏 CUSTOM DECK BUILDER</span>
+            </button>
+            <button id="btn-nav-rules" class="btn-secondary">
+              <span>📖 OFFICIAL RULES</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           SCREEN 2: GAME SETUP
+           ======================================================== -->
+      <section id="screen-setup" class="screen">
+        <div class="setup-container">
+          
+          <!-- Team Setup -->
+          <div class="setup-card">
+            <div class="section-title">
+              <span>👥 TEAMS & PLAYERS</span>
+            </div>
+            <div id="teams-setup-list" class="teams-list">
+              <!-- Dynamically populated -->
+            </div>
+            <button id="btn-add-team" type="button" class="btn-ghost mt-3 text-orange-400" style="margin-top: 10px;">
+              + Add Another Team
+            </button>
+          </div>
+
+          <!-- Round Duration -->
+          <div class="setup-card">
+            <div class="section-title">
+              <span>⏱️ ROUND TIMER</span>
+            </div>
+            <div class="options-grid">
+              <div class="option-pill" data-time-val="30">30s</div>
+              <div class="option-pill" data-time-val="45">45s</div>
+              <div class="option-pill active" data-time-val="60">60s</div>
+              <div class="option-pill" data-time-val="90">90s</div>
+            </div>
+          </div>
+
+          <!-- Game Goal Mode -->
+          <div class="setup-card">
+            <div class="section-title">
+              <span>🎯 WIN CONDITION</span>
+            </div>
+            <div class="options-grid">
+              <div class="option-pill" data-score-val="15">15 pts</div>
+              <div class="option-pill" data-score-val="25">25 pts</div>
+              <div class="option-pill active" data-score-val="30">30 pts</div>
+              <div class="option-pill" data-score-val="rounds">3 Rnds</div>
+            </div>
+          </div>
+
+          <!-- Category Selection -->
+          <div class="setup-card">
+            <div class="section-title">
+              <span>🗂️ CARD CATEGORIES</span>
+            </div>
+            <div id="category-chips-container" class="category-chips">
+              <!-- Populated from cards.js -->
+            </div>
+          </div>
+
+          <!-- Advanced Rules & Preferences -->
+          <div class="setup-card">
+            <div class="section-title">
+              <span>⚙️ RULES & PENALTIES</span>
+            </div>
+            
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Sound Effects & Buzzers</div>
+                <div class="setting-sub">Play chimes, clock ticks, and Taboo buzzers</div>
+              </div>
+              <label class="switch">
+                <input id="toggle-sound" type="checkbox" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px;">
+              <div>
+                <div class="setting-label">Skip Penalty</div>
+                <div class="setting-sub">Deduct -1 point for skipping a difficult card</div>
+              </div>
+              <label class="switch">
+                <input id="toggle-skip-penalty" type="checkbox">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex flex-col gap-2" style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+            <button id="btn-start-game" class="btn-primary">
+              <span>🔥 READY TO PLAY</span>
+            </button>
+            <button id="btn-setup-back" class="btn-ghost" style="justify-content: center;">
+              ← Back to Main Menu
+            </button>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ========================================================
+           SCREEN 3: PRE-ROUND HANDOFF (PASS & PLAY)
+           ======================================================== -->
+      <section id="screen-handoff" class="screen">
+        <div class="handoff-container">
+          <div id="handoff-round-banner" class="turn-banner" style="background: var(--team-orange);">
+            Round 1 • Turn 1
+          </div>
+
+          <h2 id="handoff-team-title" class="handoff-team-name">Team Orange</h2>
+          <div id="handoff-team-score" class="handoff-score-badge">Current Score: 0 pts</div>
+
+          <div class="handoff-card-prompt">
+            <div class="prompt-icon">📱👀</div>
+            <h3 class="prompt-title">Hand the phone to the Clue Giver</h3>
+            <p id="handoff-prompt-desc" class="prompt-desc">
+              Only the Clue Giver and opposing watchers should see the screen!
+            </p>
+          </div>
+
+          <button id="btn-start-turn-countdown" class="btn-primary" style="width: 100%; max-width: 320px;">
+            <span>🚀 I AM READY!</span>
+          </button>
+        </div>
+
+        <!-- 3-2-1 Countdown Overlay -->
+        <div id="countdown-overlay" class="countdown-overlay">
+          <div id="countdown-number" class="countdown-number">3</div>
+          <div class="text-sm font-bold tracking-widest text-slate-300 mt-4 uppercase">Get Ready...</div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           SCREEN 4: ACTIVE GAMEPLAY
+           ======================================================== -->
+      <section id="screen-game" class="screen game-screen">
+        
+        <!-- Header Info Bar -->
+        <div class="game-top-bar">
+          <div class="current-team-pill">
+            <div id="active-team-dot" class="team-pill-dot" style="background: var(--team-orange);"></div>
+            <span id="active-team-name" class="team-pill-name">Team Orange</span>
+          </div>
+
+          <div id="round-score-display" class="round-score-pill">
+            +0 pts
+          </div>
+        </div>
+
+        <!-- Circular Timer -->
+        <div class="timer-container">
+          <svg class="timer-svg" viewBox="0 0 72 72">
+            <circle class="timer-circle-bg" cx="36" cy="36" r="30" />
+            <circle id="timer-circle-progress" class="timer-circle-progress" cx="36" cy="36" r="30" />
+          </svg>
+          <div id="timer-display-text" class="timer-text">60</div>
+        </div>
+
+        <!-- Taboo Physical Card Component -->
+        <div class="card-stage">
+          <div id="active-taboo-card" class="taboo-card">
+            
+            <div class="card-top-tag">
+              <span id="card-category-tag" class="card-category-label">Everyday Objects</span>
+              <span id="card-difficulty-tag" class="card-difficulty-badge">Medium</span>
+            </div>
+
+            <div class="card-target-box">
+              <div id="card-target-word" class="target-word">UMBRELLA</div>
+            </div>
+
+            <div class="card-taboo-box">
+              <div class="taboo-header-bar">
+                <span>🚫 TABOO FORBIDDEN WORDS 🚫</span>
+              </div>
+              <div id="card-taboo-list" class="taboo-words-list">
+                <div class="taboo-word-item">RAIN</div>
+                <div class="taboo-word-item">WATER</div>
+                <div class="taboo-word-item">WET</div>
+                <div class="taboo-word-item">WEATHER</div>
+                <div class="taboo-word-item">PROTECT</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Gameplay Action Buttons Bar -->
+        <div class="game-controls">
+          <div class="action-buttons-row">
+            
+            <!-- Skip Button -->
+            <button id="btn-action-skip" class="btn-game-action btn-skip" aria-label="Skip Card">
+              <span class="action-icon">↷</span>
+              <span class="action-label">SKIP</span>
+              <span id="btn-skip-sub" class="action-sub">0 pt</span>
+            </button>
+
+            <!-- Correct Button -->
+            <button id="btn-action-correct" class="btn-game-action btn-correct" aria-label="Correct Guess">
+              <span class="action-icon">✓</span>
+              <span class="action-label">CORRECT</span>
+              <span class="action-sub">+1 pt</span>
+            </button>
+
+            <!-- Taboo / Foul Buzzer Button -->
+            <button id="btn-action-taboo" class="btn-game-action btn-taboo" aria-label="Taboo Foul">
+              <span class="action-icon">🚨</span>
+              <span class="action-label">TABOO</span>
+              <span class="action-sub">-1 pt</span>
+            </button>
+
+          </div>
+
+          <!-- Secondary Bar: Pause & Watcher Buzzer -->
+          <div class="sub-controls-row">
+            <button id="btn-action-pause" class="btn-ghost">
+              <span>⏸️ Pause</span>
+            </button>
+            <button id="btn-ingame-buzzer" class="btn-ghost text-red-400">
+              <span>🚨 Opponent Buzzer</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Pause Overlay -->
+        <div id="pause-overlay" class="pause-overlay">
+          <div class="pause-title">GAME PAUSED</div>
+          <div class="pause-desc">Card is hidden to prevent peeking!</div>
+          <button id="btn-resume-game" class="btn-primary" style="padding: 14px 28px;">
+            <span>▶️ RESUME ROUND</span>
+          </button>
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           SCREEN 5: ROUND REVIEW & DISPUTE ROOM
+           ======================================================== -->
+      <section id="screen-review" class="screen">
+        <div class="review-header">
+          <h2 id="review-team-header" class="review-title">Round Review</h2>
+          <p class="review-subtitle">
+            Accidental click? Dispute a word? Tap any button to adjust score before confirming!
+          </p>
+        </div>
+
+        <!-- Score Breakdown Box -->
+        <div class="review-score-summary">
+          <div class="score-stat-box">
+            <span id="review-stat-correct" class="score-stat-num text-emerald-400">0</span>
+            <span class="score-stat-label">Correct (+1)</span>
+          </div>
+          <div class="score-stat-box">
+            <span id="review-stat-taboo" class="score-stat-num text-red-400">0</span>
+            <span class="score-stat-label">Taboo (-1)</span>
+          </div>
+          <div class="score-stat-box">
+            <span id="review-stat-net" class="score-stat-num text-orange-400">+0</span>
+            <span class="score-stat-label">Net Score</span>
+          </div>
+        </div>
+
+        <!-- Dispute Cards List -->
+        <div id="review-cards-list" class="review-list-container">
+          <!-- Populated dynamically -->
+        </div>
+
+        <button id="btn-confirm-review" class="btn-primary" style="margin-top: 8px;">
+          <span>CONFIRM & PASS TURN ➜</span>
+        </button>
+      </section>
+
+      <!-- ========================================================
+           SCREEN 6: GAME OVER & VICTORY
+           ======================================================== -->
+      <section id="screen-victory" class="screen">
+        <div class="victory-container">
+          <div class="trophy-icon">🏆</div>
+          <h1 class="victory-title">VICTORY!</h1>
+          <div id="victory-winner-team" class="winner-team-callout">Team Orange WINS!</div>
+
+          <div id="victory-scoreboard" class="final-scoreboard">
+            <!-- Populated dynamically -->
+          </div>
+
+          <div class="flex flex-col gap-3" style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px;">
+            <button id="btn-play-again-same" class="btn-primary">
+              <span>🔄 PLAY AGAIN</span>
+            </button>
+            <button id="btn-rematch-setup" class="btn-secondary">
+              <span>⚙️ CHANGE SETTINGS</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- ========================================================
+       MODAL 1: OFFICIAL TABOO RULES & HOW TO PLAY
+       ======================================================== -->
+  <div id="modal-rules" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">📖 Official Taboo Rules</h3>
+        <button class="icon-btn text-sm" data-close-modal="modal-rules">✕</button>
+      </div>
+      <div class="modal-body text-sm leading-relaxed text-slate-300">
+        <h4 class="font-bold text-white text-base">🎯 Objective</h4>
+        <p>Your team must guess as many target words as possible before the timer runs out!</p>
+
+        <h4 class="font-bold text-white text-base mt-2">🚫 What You CANNOT Do</h4>
+        <ul class="list-disc pl-5 space-y-1 text-slate-300">
+          <li>You cannot say the <strong>Target Word</strong> or any form/derivative of it (e.g., if the word is "BICYCLE", you cannot say "BIKE" or "CYCLING").</li>
+          <li>You cannot say any of the <strong>5 Taboo Words</strong> listed below it.</li>
+          <li>No gestures, hand motions, sound effects, or mouth pantomimes.</li>
+          <li>No "sounds like", "rhymes with", or "starts with the letter X" clues.</li>
+          <li>No abbreviations or foreign translations of the forbidden words.</li>
+        </ul>
+
+        <h4 class="font-bold text-white text-base mt-2">👀 The Opponents' Role (Watchers)</h4>
+        <p>
+          One player from the opposing team sits beside/behind the Clue Giver and watches the card. If the Clue Giver accidentally speaks any Taboo word, the watcher hits the <strong>TABOO BUZZER</strong>!
+        </p>
+
+        <h4 class="font-bold text-white text-base mt-2">⌨️ Desktop Keyboard Shortcuts</h4>
+        <ul class="list-disc pl-5 space-y-1 text-slate-300">
+          <li><strong>Spacebar / Right Arrow:</strong> Correct (+1 pt)</li>
+          <li><strong>B / Down Arrow:</strong> Taboo Foul (-1 pt)</li>
+          <li><strong>S / Left Arrow:</strong> Skip (0 pt)</li>
+          <li><strong>P / Escape:</strong> Pause / Resume Round</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL 2: CUSTOM DECK & CARD BUILDER
+       ======================================================== -->
+  <div id="modal-custom-cards" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">🃏 Custom Cards Manager</h3>
+        <button class="icon-btn text-sm" data-close-modal="modal-custom-cards">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Add Card Form -->
+        <form id="form-add-custom-card" class="flex flex-col gap-3">
+          <div class="form-group">
+            <label class="form-label">TARGET GUESS WORD *</label>
+            <input id="new-card-word" class="form-input" type="text" placeholder="e.g. NETFLIX" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">5 TABOO FORBIDDEN WORDS *</label>
+            <input id="new-taboo-1" class="form-input mb-1" type="text" placeholder="Taboo word 1" required>
+            <input id="new-taboo-2" class="form-input mb-1" type="text" placeholder="Taboo word 2" required>
+            <input id="new-taboo-3" class="form-input mb-1" type="text" placeholder="Taboo word 3" required>
+            <input id="new-taboo-4" class="form-input mb-1" type="text" placeholder="Taboo word 4 (optional)">
+            <input id="new-taboo-5" class="form-input" type="text" placeholder="Taboo word 5 (optional)">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">CATEGORY</label>
+            <input id="new-card-category" class="form-input" type="text" placeholder="e.g. Inside Jokes, Pop Culture">
+          </div>
+
+          <button type="submit" class="btn-primary py-2 text-sm mt-1">
+            + SAVE TO DECK
+          </button>
+        </form>
+
+        <hr class="border-slate-700 my-2">
+
+        <!-- Import / Export Actions -->
+        <div class="flex gap-2">
+          <button id="btn-export-custom-cards" class="btn-secondary flex-1 text-xs py-2">
+            📤 Export JSON
+          </button>
+          <button id="btn-import-custom-cards" class="btn-secondary flex-1 text-xs py-2">
+            📥 Import JSON
+          </button>
+        </div>
+
+        <h4 class="font-bold text-white text-sm mt-2">Saved Custom Cards</h4>
+        <div id="custom-cards-container" class="flex flex-col gap-2 max-h-48 overflow-y-auto">
+          <!-- Populated dynamically -->
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL 3: REFEREE STANDALONE BUZZER PAD
+       ======================================================== -->
+  <div id="modal-buzzer" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">🚨 Referee Buzzer Pad</h3>
+        <button class="icon-btn text-sm" data-close-modal="modal-buzzer">✕</button>
+      </div>
+      <div class="buzzer-modal-content">
+        <p class="text-sm text-slate-300 mb-6">
+          Opponent watching the card? Tap the giant buzzer the instant a taboo word is uttered!
+        </p>
+        <button id="giant-buzzer-button" class="giant-buzzer-btn" aria-label="Loud Buzzer">
+          <span>BUZZ!</span>
+          <span style="font-size: 0.9rem; font-family: sans-serif; font-weight: bold; opacity: 0.85;">TABOO!</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/cards.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/confetti.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
