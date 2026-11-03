@@ -643,16 +643,23 @@
       <!-- Host View -->
       <div id="p2p-view-host" class="p2p-view">
         <p class="text-sm text-slate-300 mb-3">
-          Share this room code or QR code with <strong>Team 2's device</strong> to join this game:
+          Share these credentials or QR code with <strong>Team 2's device</strong> to join. Strangers without the passcode will be blocked.
         </p>
 
-        <div class="p2p-code-display-box">
-          <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">ROOM CODE</span>
-          <div id="p2p-display-code" class="p2p-big-code">----</div>
-          <button id="btn-copy-room-link" type="button" class="btn-ghost text-xs text-orange-400 py-1" style="justify-content: center;">
-            📋 Copy Invite Link
-          </button>
+        <div class="p2p-credentials-grid">
+          <div class="p2p-credential-card">
+            <span class="p2p-cred-label">🎉 PARTY CODE</span>
+            <div id="p2p-display-code" class="p2p-cred-val">----</div>
+          </div>
+          <div class="p2p-credential-card">
+            <span class="p2p-cred-label">🔒 PASSCODE</span>
+            <div id="p2p-display-passcode" class="p2p-cred-val" style="color: #34d399; text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);">----</div>
+          </div>
         </div>
+
+        <button id="btn-copy-room-link" type="button" class="btn-ghost text-xs text-orange-400 py-1 mb-3" style="justify-content: center; width: 100%;">
+          📋 Copy Invite Link (Includes Passcode)
+        </button>
 
         <div id="p2p-qrcode-container" class="p2p-qr-box">
           <!-- Dynamically generated QR Code -->
@@ -670,13 +677,22 @@
       <!-- Join View -->
       <div id="p2p-view-join" class="p2p-view" style="display: none;">
         <p class="text-sm text-slate-300 mb-3">
-          Enter the 4-digit room code shown on <strong>Team 1's phone</strong>:
+          Enter the <strong>Party Code</strong> and <strong>Passcode</strong> shown on Team 1's phone:
         </p>
 
-        <div class="p2p-input-group">
-          <input id="input-p2p-room-code" type="text" maxlength="6" placeholder="e.g. 5821" class="p2p-code-input" autocomplete="off" autocapitalize="characters">
-          <button id="btn-p2p-join-submit" type="button" class="btn-primary" style="padding: 12px 20px;">
-            <span>JOIN GAME</span>
+        <div class="flex flex-col gap-3 w-full">
+          <div class="form-group text-left" style="width: 100%;">
+            <label class="form-label text-xs">🎉 PARTY CODE (4-DIGIT)</label>
+            <input id="input-p2p-room-code" type="text" maxlength="6" placeholder="e.g. 5821" class="p2p-code-input" style="width: 100%; box-sizing: border-box;" autocomplete="off" autocapitalize="characters">
+          </div>
+
+          <div class="form-group text-left" style="width: 100%;">
+            <label class="form-label text-xs">🔒 SECURITY PASSCODE (4-DIGIT PIN)</label>
+            <input id="input-p2p-passcode" type="text" maxlength="6" placeholder="e.g. 4812" class="p2p-code-input" style="width: 100%; box-sizing: border-box; color: #34d399;" autocomplete="off">
+          </div>
+
+          <button id="btn-p2p-join-submit" type="button" class="btn-primary w-full py-3 mt-1">
+            <span>🚀 VERIFY & JOIN PARTY</span>
           </button>
         </div>
 
@@ -686,7 +702,7 @@
 
         <div class="p2p-help-box mt-4">
           <p class="text-xs text-slate-400 leading-relaxed">
-            💡 <strong>How it works:</strong> Both phones connect directly via WebRTC. When Team 1 gives clues, Team 2's phone acts as the Watcher & Buzzer! Both phones can score cards, and any disagreements are resolved in the review room with the recorded audio playback.
+            🛡️ <strong>Private Match:</strong> The passcode protects your game from strangers. Only players with both codes can connect to the match.
           </p>
         </div>
       </div>

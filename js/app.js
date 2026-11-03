@@ -1353,13 +1353,16 @@ const TabooApp = {
 
   initDualDeviceHost: function() {
     const codeEl = document.getElementById("p2p-display-code");
+    const passEl = document.getElementById("p2p-display-passcode");
     const qrContainer = document.getElementById("p2p-qrcode-container");
 
-    P2PEngine.initHost().then(roomCode => {
-      if (codeEl) codeEl.textContent = roomCode;
+    P2PEngine.initHost().then(creds => {
+      if (codeEl) codeEl.textContent = creds.roomCode;
+      if (passEl) passEl.textContent = creds.passcode;
+
       if (qrContainer && typeof QRCode !== "undefined") {
         qrContainer.innerHTML = "";
-        const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+        const joinUrl = `${window.location.origin}${window.location.pathname}?party=${creds.roomCode}&pass=${creds.passcode}`;
         new QRCode(qrContainer, {
           text: joinUrl,
           width: 140,
@@ -1377,7 +1380,9 @@ const TabooApp = {
 
   checkUrlForRoomCode: function() {
     const params = new URLSearchParams(window.location.search);
-    const room = params.get("room");
+    const room = params.get("party") || params.get("room");
+    const pass = params.get("pass") || params.get("pin");
+
     if (room) {
       this.showModal("modal-dual-device");
       const joinTab = document.getElementById("p2p-tab-join");
@@ -1392,12 +1397,17 @@ const TabooApp = {
         joinView.style.display = "block";
       }
 
-      const input = document.getElementById("input-p2p-room-code");
-      if (input) input.value = room;
+      const codeInput = document.getElementById("input-p2p-room-code");
+      if (codeInput) codeInput.value = room;
 
-      P2PEngine.joinRoom(room).catch(err => {
-        this.showToast("Could not join room: " + err.message);
-      });
+      const passInput = document.getElementById("input-p2p-passcode");
+      if (passInput && pass) passInput.value = pass;
+
+      if (room && pass) {
+        P2PEngine.joinRoom(room, pass).catch(err => {
+          this.showToast("Could not join game: " + err.message);
+        });
+      }
     }
   },
 
@@ -1478,33 +1488,44 @@ const TabooApp = {
     // Join submit
     document.getElementById("btn-p2p-join-submit")?.addEventListener("click", () => {
       const codeInput = document.getElementById("input-p2p-room-code");
+      const passInput = document.getElementById("input-p2p-passcode");
       const code = codeInput ? codeInput.value.trim() : "";
+      const pass = passInput ? passInput.value.trim() : "";
+
       if (!code) {
-        this.showToast("Please enter a room code!");
+        this.showToast("Please enter the 4-digit Party Code!");
         return;
       }
+      if (!pass) {
+        this.showToast("Please enter the 4-digit Passcode!");
+        return;
+      }
+
       const statusEl = document.getElementById("p2p-join-status");
       if (statusEl) {
-        statusEl.textContent = "Connecting to Team 1's phone...";
+        statusEl.textContent = "Connecting & verifying passcode with Team 1...";
         statusEl.className = "p2p-status-pill p2p-status-waiting";
       }
-      P2PEngine.joinRoom(code).then(() => {
-        this.showToast("Connected to Team 1! Waiting for match to start...");
+
+      P2PEngine.joinRoom(code, pass).then(() => {
+        this.showToast("🎉 Passcode verified! Connected to Team 1.");
       }).catch(err => {
         if (statusEl) {
-          statusEl.textContent = "Failed to connect: " + err.message;
+          statusEl.textContent = err.message;
           statusEl.className = "p2p-status-pill p2p-status-disconnected";
         }
+        this.showToast(err.message);
       });
     });
 
-    // Copy room invite link
+    // Copy room invite link (includes party and passcode)
     document.getElementById("btn-copy-room-link")?.addEventListener("click", () => {
       const code = P2PEngine.roomCode;
-      if (!code) return;
-      const url = `${window.location.origin}${window.location.pathname}?room=${code}`;
+      const pass = P2PEngine.passcode;
+      if (!code || !pass) return;
+      const url = `${window.location.origin}${window.location.pathname}?party=${code}&pass=${pass}`;
       navigator.clipboard.writeText(url).then(() => {
-        this.showToast("Invite link copied to clipboard!");
+        this.showToast("Invite link copied to clipboard! (Party & Passcode included)");
       }).catch(() => {
         prompt("Copy this invite link:", url);
       });

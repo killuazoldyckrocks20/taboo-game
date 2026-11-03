@@ -1653,6 +1653,43 @@ input:checked + .slider:before {
   text-align: center;
 }
 
+.p2p-credentials-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.p2p-credential-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1.5px dashed rgba(59, 130, 246, 0.45);
+  border-radius: var(--radius-md);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.p2p-cred-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.p2p-cred-val {
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: #60a5fa;
+  text-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+  margin-top: 2px;
+}
+
 .p2p-code-display-box {
   background: rgba(15, 23, 42, 0.8);
   border: 1.5px dashed rgba(59, 130, 246, 0.5);
