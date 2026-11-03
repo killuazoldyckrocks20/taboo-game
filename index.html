@@ -489,54 +489,110 @@
        MODAL 2: CUSTOM DECK & CARD BUILDER
        ======================================================== -->
   <div id="modal-custom-cards" class="modal-backdrop">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width: 480px;">
       <div class="modal-header">
-        <h3 class="modal-title">🃏 Custom Cards Manager</h3>
+        <h3 class="modal-title">🃏 Custom Deck Manager</h3>
         <button class="icon-btn text-sm" data-close-modal="modal-custom-cards">✕</button>
       </div>
-      <div class="modal-body">
-        
-        <!-- Add Card Form -->
-        <form id="form-add-custom-card" class="flex flex-col gap-3">
-          <div class="form-group">
-            <label class="form-label">TARGET GUESS WORD *</label>
-            <input id="new-card-word" class="form-input" type="text" placeholder="e.g. NETFLIX" required>
+
+      <!-- Navigation Tabs: Import AI/JSON vs Add Single Card vs View Deck -->
+      <div class="p2p-tabs-bar" style="margin-bottom: 14px;">
+        <button id="tab-deck-import" type="button" class="p2p-tab active">
+          <span>🤖 Import AI / JSON</span>
+        </button>
+        <button id="tab-deck-add" type="button" class="p2p-tab">
+          <span>➕ Add Card</span>
+        </button>
+        <button id="tab-deck-view" type="button" class="p2p-tab">
+          <span>🗂️ View (<span id="custom-cards-badge-count">0</span>)</span>
+        </button>
+      </div>
+
+      <div class="modal-body" style="padding: 0;">
+
+        <!-- TAB 1: IMPORT AI / JSON DECK -->
+        <div id="view-deck-import" class="deck-tab-view">
+          <p class="text-xs text-slate-300 mb-2 leading-relaxed">
+            Generate themed decks with <strong>ChatGPT, Claude, or Gemini</strong>, or import an existing JSON deck.
+          </p>
+
+          <div class="flex gap-2 mb-3">
+            <button id="btn-copy-llm-prompt" type="button" class="btn-ghost flex-1 text-xs py-2" style="border: 1px dashed #f97316; color: #fb923c;">
+              📋 Copy LLM Prompt for AI
+            </button>
+            <label class="btn-ghost flex-1 text-xs py-2 text-center cursor-pointer" style="border: 1px dashed #3b82f6; color: #60a5fa; margin: 0; display: flex; align-items: center; justify-content: center;">
+              📁 Upload .json File
+              <input id="file-import-custom-deck" type="file" accept=".json,application/json" style="display: none;">
+            </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">5 TABOO FORBIDDEN WORDS *</label>
-            <input id="new-taboo-1" class="form-input mb-1" type="text" placeholder="Taboo word 1" required>
-            <input id="new-taboo-2" class="form-input mb-1" type="text" placeholder="Taboo word 2" required>
-            <input id="new-taboo-3" class="form-input mb-1" type="text" placeholder="Taboo word 3" required>
-            <input id="new-taboo-4" class="form-input mb-1" type="text" placeholder="Taboo word 4 (optional)">
-            <input id="new-taboo-5" class="form-input" type="text" placeholder="Taboo word 5 (optional)">
+          <div class="form-group mb-2">
+            <label class="form-label text-xs">PASTE JSON DECK HERE (ARRAY OR { CARDS: [...] })</label>
+            <textarea id="textarea-import-deck" class="form-input font-mono text-xs" rows="6" placeholder='[
+  {
+    "word": "HOGWARTS",
+    "taboo": ["HARRY", "POTTER", "SCHOOL", "MAGIC", "WIZARD"],
+    "category": "Harry Potter",
+    "difficulty": "medium"
+  }
+]' style="resize: vertical; min-height: 110px;"></textarea>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">CATEGORY</label>
-            <input id="new-card-category" class="form-input" type="text" placeholder="e.g. Inside Jokes, Pop Culture">
+          <div class="flex items-center justify-between mb-3 px-1">
+            <label class="text-xs text-slate-300 flex items-center gap-2 cursor-pointer">
+              <input id="check-replace-deck" type="checkbox" style="accent-color: #f97316;">
+              <span>Replace existing custom deck (instead of appending)</span>
+            </label>
           </div>
 
-          <button type="submit" class="btn-primary py-2 text-sm mt-1">
-            + SAVE TO DECK
-          </button>
-        </form>
-
-        <hr class="border-slate-700 my-2">
-
-        <!-- Import / Export Actions -->
-        <div class="flex gap-2">
-          <button id="btn-export-custom-cards" class="btn-secondary flex-1 text-xs py-2">
-            📤 Export JSON
-          </button>
-          <button id="btn-import-custom-cards" class="btn-secondary flex-1 text-xs py-2">
-            📥 Import JSON
+          <button id="btn-submit-import-deck" type="button" class="btn-primary w-full py-2 text-sm">
+            🚀 IMPORT DECK TO GAME
           </button>
         </div>
 
-        <h4 class="font-bold text-white text-sm mt-2">Saved Custom Cards</h4>
-        <div id="custom-cards-container" class="flex flex-col gap-2 max-h-48 overflow-y-auto">
-          <!-- Populated dynamically -->
+        <!-- TAB 2: ADD SINGLE CARD -->
+        <div id="view-deck-add" class="deck-tab-view" style="display: none;">
+          <form id="form-add-custom-card" class="flex flex-col gap-3">
+            <div class="form-group">
+              <label class="form-label">TARGET GUESS WORD *</label>
+              <input id="new-card-word" class="form-input" type="text" placeholder="e.g. NETFLIX" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">5 TABOO FORBIDDEN WORDS *</label>
+              <input id="new-taboo-1" class="form-input mb-1" type="text" placeholder="Taboo word 1" required>
+              <input id="new-taboo-2" class="form-input mb-1" type="text" placeholder="Taboo word 2" required>
+              <input id="new-taboo-3" class="form-input mb-1" type="text" placeholder="Taboo word 3" required>
+              <input id="new-taboo-4" class="form-input mb-1" type="text" placeholder="Taboo word 4 (optional)">
+              <input id="new-taboo-5" class="form-input" type="text" placeholder="Taboo word 5 (optional)">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">CATEGORY</label>
+              <input id="new-card-category" class="form-input" type="text" placeholder="e.g. Inside Jokes, Pop Culture">
+            </div>
+
+            <button type="submit" class="btn-primary py-2 text-sm mt-1">
+              + SAVE TO DECK
+            </button>
+          </form>
+        </div>
+
+        <!-- TAB 3: VIEW & MANAGE CARDS -->
+        <div id="view-deck-view" class="deck-tab-view" style="display: none;">
+          <div class="flex gap-2 mb-3">
+            <button id="btn-export-custom-cards" class="btn-secondary flex-1 text-xs py-2">
+              📤 Export Deck JSON
+            </button>
+            <button id="btn-clear-all-custom" class="btn-danger-outline flex-1 text-xs py-2">
+              🗑️ Clear Custom Deck
+            </button>
+          </div>
+
+          <h4 class="font-bold text-white text-xs mb-2">Saved Custom Cards</h4>
+          <div id="custom-cards-container" class="flex flex-col gap-2 max-h-56 overflow-y-auto">
+            <!-- Populated dynamically -->
+          </div>
         </div>
 
       </div>

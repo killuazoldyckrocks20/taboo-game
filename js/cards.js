@@ -2038,23 +2038,90 @@ const CardDB = {
     return custom;
   },
 
-  importCustomCards: function(jsonString) {
+  clearCustomCards: function() {
+    localStorage.removeItem("taboo_custom_cards");
+  },
+
+  importCustomCards: function(inputData, replaceExisting = false) {
     try {
-      const imported = JSON.parse(jsonString);
-      if (!Array.isArray(imported)) throw new Error("Invalid format: expected array");
-      const valid = imported.filter(c => c.word && Array.isArray(c.taboo) && c.taboo.length >= 1);
-      const custom = CardDB.getCustomCards();
-      valid.forEach(c => {
-        c.id = "custom_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
-        c.isCustom = true;
-        if (!c.category) c.category = "Custom";
-        if (!c.difficulty) c.difficulty = "medium";
-        custom.push(c);
+      let raw = inputData;
+      if (typeof raw === "string") {
+        let trimmed = raw.trim();
+        // Remove markdown code fences if pasted directly from LLM
+        if (trimmed.startsWith("```")) {
+          trimmed = trimmed.replace(/^```[a-zA-Z]*\n?/, "").replace(/```\s*$/, "").trim();
+        }
+        raw = JSON.parse(trimmed);
+      }
+
+      let cardList = [];
+      let defaultCategory = "Custom";
+
+      if (Array.isArray(raw)) {
+        cardList = raw;
+      } else if (raw && typeof raw === "object") {
+        if (raw.deckName || raw.category || raw.name) {
+          defaultCategory = raw.deckName || raw.category || raw.name;
+        }
+        if (Array.isArray(raw.cards)) {
+          cardList = raw.cards;
+        } else if (Array.isArray(raw.deck)) {
+          cardList = raw.deck;
+        } else if (Array.isArray(raw.items)) {
+          cardList = raw.items;
+        } else {
+          throw new Error("Could not find a cards array in the JSON. Expected an array or { 'cards': [...] }");
+        }
+      } else {
+        throw new Error("Invalid format: expected a JSON array or deck object.");
+      }
+
+      const validCards = [];
+      const discoveredCategories = new Set();
+
+      cardList.forEach(c => {
+        if (!c || !c.word) return;
+        const word = String(c.word).trim().toUpperCase();
+
+        let tabooList = [];
+        if (Array.isArray(c.taboo)) {
+          tabooList = c.taboo.map(t => String(t).trim().toUpperCase()).filter(t => t.length > 0);
+        } else if (typeof c.taboo === "string") {
+          tabooList = c.taboo.split(",").map(t => t.trim().toUpperCase()).filter(t => t.length > 0);
+        }
+        if (tabooList.length === 0) return;
+
+        const category = (c.category && String(c.category).trim()) || defaultCategory;
+        discoveredCategories.add(category);
+
+        const difficulty = ["easy", "medium", "hard"].includes(String(c.difficulty).toLowerCase())
+          ? String(c.difficulty).toLowerCase()
+          : "medium";
+
+        validCards.push({
+          id: "custom_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
+          word: word,
+          taboo: tabooList,
+          category: category,
+          difficulty: difficulty,
+          isCustom: true
+        });
       });
-      localStorage.setItem("taboo_custom_cards", JSON.stringify(custom));
-      return valid.length;
+
+      if (validCards.length === 0) {
+        throw new Error("No valid cards found. Ensure each card has a 'word' string and a 'taboo' array.");
+      }
+
+      let finalCustomList = replaceExisting ? validCards : [...CardDB.getCustomCards(), ...validCards];
+      localStorage.setItem("taboo_custom_cards", JSON.stringify(finalCustomList));
+
+      return {
+        count: validCards.length,
+        totalInDeck: finalCustomList.length,
+        categories: Array.from(discoveredCategories)
+      };
     } catch (e) {
-      console.error("Import failed", e);
+      console.error("Import failed:", e);
       throw e;
     }
   },

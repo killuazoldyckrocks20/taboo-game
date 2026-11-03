@@ -906,22 +906,31 @@ const TabooApp = {
   },
 
   // ==========================================
-  // CUSTOM CARDS MANAGER
+  // CUSTOM CARDS & DECK MANAGER
   // ==========================================
   renderCustomCardsList: function() {
     const container = document.getElementById("custom-cards-container");
-    if (!container) return;
+    const countBadge = document.getElementById("custom-cards-badge-count");
     const cards = CardDB.getCustomCards();
 
+    if (countBadge) {
+      countBadge.textContent = cards.length;
+    }
+
+    if (!container) return;
+
     if (cards.length === 0) {
-      container.innerHTML = `<div class="text-center text-slate-400 py-6 text-sm">No custom cards created yet. Create your first card above!</div>`;
+      container.innerHTML = `<div class="text-center text-slate-400 py-6 text-sm">No custom cards created yet. Use the <strong>Import AI / JSON</strong> tab to add your first deck!</div>`;
       return;
     }
 
     container.innerHTML = cards.map(c => `
       <div class="review-item">
         <div class="review-item-info">
-          <span class="review-item-word">${c.word}</span>
+          <div class="flex items-center gap-2">
+            <span class="review-item-word">${c.word}</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-orange-400 font-semibold">${c.category || "Custom"}</span>
+          </div>
           <span class="review-item-cat">${c.taboo.join(" • ")}</span>
         </div>
         <button type="button" class="btn-danger-outline py-1 px-3 text-xs" data-delete-id="${c.id}">Delete</button>
@@ -932,6 +941,7 @@ const TabooApp = {
       btn.addEventListener("click", () => {
         CardDB.deleteCustomCard(btn.dataset.deleteId);
         this.renderCustomCardsList();
+        this.renderCategoryChips();
         this.showToast("Custom card deleted!");
       });
     });
@@ -972,7 +982,29 @@ const TabooApp = {
     wordInput.value = "";
     t1.value = ""; t2.value = ""; t3.value = ""; t4.value = ""; t5.value = "";
     this.renderCustomCardsList();
+    this.renderCategoryChips();
     this.showToast("Card created and added to deck!");
+  },
+
+  switchDeckManagerTab: function(tabName) {
+    const tabs = ["import", "add", "view"];
+    tabs.forEach(t => {
+      const btn = document.getElementById(`tab-deck-${t}`);
+      const view = document.getElementById(`view-deck-${t}`);
+      if (btn && view) {
+        if (t === tabName) {
+          btn.classList.add("active");
+          view.style.display = "block";
+        } else {
+          btn.classList.remove("active");
+          view.style.display = "none";
+        }
+      }
+    });
+
+    if (tabName === "view") {
+      this.renderCustomCardsList();
+    }
   },
 
   // ==========================================
@@ -1576,29 +1608,120 @@ const TabooApp = {
       SoundEngine.playBuzzer();
     });
 
-    // Custom Card Form Submit
-    document.getElementById("form-add-custom-card")?.addEventListener("submit", (e) => this.handleAddCustomCardSubmit(e));
+    // Custom Deck Manager Tabs
+    document.getElementById("tab-deck-import")?.addEventListener("click", () => this.switchDeckManagerTab("import"));
+    document.getElementById("tab-deck-add")?.addEventListener("click", () => this.switchDeckManagerTab("add"));
+    document.getElementById("tab-deck-view")?.addEventListener("click", () => this.switchDeckManagerTab("view"));
 
-    // Custom Cards Export & Import
-    document.getElementById("btn-export-custom-cards")?.addEventListener("click", () => {
-      const json = CardDB.exportCustomCards();
-      navigator.clipboard.writeText(json).then(() => {
-        this.showToast("Custom cards JSON copied to clipboard!");
+    // Copy AI Deck Prompt for LLM
+    document.getElementById("btn-copy-llm-prompt")?.addEventListener("click", () => {
+      const promptText = `You are a Taboo party game master. Generate a high-quality deck of custom Taboo cards in valid JSON format.
+
+JSON Requirements:
+- Output ONLY a valid JSON array of card objects (or {"cards": [...]}).
+- Each card object must have:
+  * "word": string (Target guess word or phrase, UPPERCASE)
+  * "taboo": array of 5 distinct forbidden words that cannot be spoken (UPPERCASE)
+  * "category": string (Theme or category name, e.g. "Harry Potter", "Marvel", "Inside Jokes")
+  * "difficulty": "easy" | "medium" | "hard"
+
+Taboo Guidelines:
+1. Provide 5 taboo words that are the most natural, obvious words a player would instinctively use to describe the target word.
+2. Do NOT include derivatives or variations of the target word in its taboo list (e.g. if the word is "BAKER", do not include "BAKE" or "BAKERY").
+3. Make them fun, lively, and challenging for game night.
+
+Example JSON format:
+[
+  {
+    "word": "ESPRESSO",
+    "taboo": ["COFFEE", "SHOT", "CAFFEINE", "DRINK", "MACHINE"],
+    "category": "Food & Drink",
+    "difficulty": "medium"
+  },
+  {
+    "word": "HOGWARTS",
+    "taboo": ["HARRY", "POTTER", "MAGIC", "SCHOOL", "WIZARD"],
+    "category": "Harry Potter",
+    "difficulty": "easy"
+  }
+]`;
+
+      navigator.clipboard.writeText(promptText).then(() => {
+        this.showToast("📋 AI Prompt copied! Paste into ChatGPT, Gemini, or Claude.");
       }).catch(() => {
-        alert("Custom cards JSON:\n" + json);
+        prompt("Copy this prompt for your LLM:", promptText);
       });
     });
 
-    document.getElementById("btn-import-custom-cards")?.addEventListener("click", () => {
-      const input = prompt("Paste custom cards JSON here:");
-      if (input) {
-        try {
-          const count = CardDB.importCustomCards(input);
-          this.renderCustomCardsList();
-          this.showToast(`Imported ${count} cards successfully!`);
-        } catch (e) {
-          alert("Invalid JSON format! Please check your data.");
-        }
+    // File Input Import
+    document.getElementById("file-import-custom-deck")?.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const textarea = document.getElementById("textarea-import-deck");
+        if (textarea) textarea.value = evt.target.result;
+        this.showToast(`Loaded ${file.name}! Click 'Import Deck to Game' below.`);
+      };
+      reader.readAsText(file);
+    });
+
+    // Submit Import Deck (Textarea / File)
+    document.getElementById("btn-submit-import-deck")?.addEventListener("click", () => {
+      const textarea = document.getElementById("textarea-import-deck");
+      const replaceCheck = document.getElementById("check-replace-deck");
+      const content = textarea ? textarea.value.trim() : "";
+
+      if (!content) {
+        this.showToast("Please paste JSON or upload a file first!");
+        return;
+      }
+
+      try {
+        const replaceExisting = replaceCheck ? replaceCheck.checked : false;
+        const result = CardDB.importCustomCards(content, replaceExisting);
+        this.renderCustomCardsList();
+        this.renderCategoryChips();
+        this.switchDeckManagerTab("view");
+        if (textarea) textarea.value = "";
+        
+        const catMsg = result.categories.length > 0 ? ` in [${result.categories.join(", ")}]` : "";
+        this.showToast(`🎉 Imported ${result.count} cards${catMsg}!`);
+      } catch (err) {
+        alert("Import failed: " + err.message);
+      }
+    });
+
+    // Custom Card Form Submit
+    document.getElementById("form-add-custom-card")?.addEventListener("submit", (e) => this.handleAddCustomCardSubmit(e));
+
+    // Custom Cards Export
+    document.getElementById("btn-export-custom-cards")?.addEventListener("click", () => {
+      const cards = CardDB.getCustomCards();
+      if (cards.length === 0) {
+        this.showToast("No custom cards to export!");
+        return;
+      }
+      const json = CardDB.exportCustomCards();
+      navigator.clipboard.writeText(json).then(() => {
+        this.showToast("Custom deck JSON copied to clipboard!");
+      }).catch(() => {
+        prompt("Custom deck JSON:", json);
+      });
+    });
+
+    // Clear All Custom Cards
+    document.getElementById("btn-clear-all-custom")?.addEventListener("click", () => {
+      const cards = CardDB.getCustomCards();
+      if (cards.length === 0) {
+        this.showToast("Custom deck is already empty!");
+        return;
+      }
+      if (confirm(`Are you sure you want to delete all ${cards.length} custom cards?`)) {
+        CardDB.clearCustomCards();
+        this.renderCustomCardsList();
+        this.renderCategoryChips();
+        this.showToast("Custom deck cleared!");
       }
     });
 
