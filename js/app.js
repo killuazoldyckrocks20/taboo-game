@@ -10,13 +10,14 @@ const TabooApp = {
     targetScore: 30,
     isFixedRounds: false,
     maxRounds: 3,
-    skipPenalty: 0,
-    tabooPenalty: -1,
+    skipPenalty: -1, // default -1 pt
+    tabooPenalty: -2, // default -2 pts
     skipLimit: 0, // 0 = unlimited
     selectedCategory: "All",
     soundEnabled: true,
     vibrationEnabled: true,
-    recordAudio: false
+    recordAudio: false,
+    configVersion: 2
   },
 
   // Game Match State
@@ -205,7 +206,8 @@ const TabooApp = {
         teams: this.state.teams,
         deck: this.state.deck,
         roundNumber: this.state.roundNumber,
-        currentTeamIdx: this.state.currentTeamIdx
+        currentTeamIdx: this.state.currentTeamIdx,
+        config: this.config
       });
     }
 
@@ -324,6 +326,7 @@ const TabooApp = {
 
     this.updateTurnScorePill();
     this.updateSkipButtonLabel();
+    this.updateTabooButtonLabel();
     this.showScreen("screen-game");
 
     // Audio recording (if enabled) - records in local memory on Host phone (or single phone)
@@ -528,8 +531,14 @@ const TabooApp = {
       const remaining = Math.max(0, this.config.skipLimit - this.state.skipsUsedThisTurn);
       subLabel.textContent = `${remaining} left`;
     } else {
-      subLabel.textContent = this.config.skipPenalty < 0 ? "-1 pt" : "0 pt";
+      subLabel.textContent = this.config.skipPenalty < 0 ? `${this.config.skipPenalty} pt` : "0 pt";
     }
+  },
+
+  updateTabooButtonLabel: function() {
+    const subLabel = document.getElementById("btn-taboo-sub");
+    if (!subLabel) return;
+    subLabel.textContent = `${this.config.tabooPenalty} pts`;
   },
 
   calculateCurrentTurnScore: function() {
@@ -1018,6 +1027,14 @@ const TabooApp = {
       }
     } catch (e) {}
 
+    // Version migration to apply new defaults (skip = -1, taboo = -2) if upgraded or new
+    if (!this.config.configVersion || this.config.configVersion < 2) {
+      this.config.tabooPenalty = -2;
+      this.config.skipPenalty = -1;
+      this.config.configVersion = 2;
+      this.saveSettings();
+    }
+
     // Update settings DOM toggles
     const durPill = document.querySelector(`[data-time-val="${this.config.roundDuration}"]`);
     if (durPill) {
@@ -1034,6 +1051,9 @@ const TabooApp = {
     const soundToggle = document.getElementById("toggle-sound");
     if (soundToggle) soundToggle.checked = !SoundEngine.isMuted;
 
+    const tabooToggle = document.getElementById("toggle-taboo-penalty");
+    if (tabooToggle) tabooToggle.checked = (this.config.tabooPenalty === -2);
+
     const skipToggle = document.getElementById("toggle-skip-penalty");
     if (skipToggle) skipToggle.checked = (this.config.skipPenalty < 0);
 
@@ -1042,6 +1062,9 @@ const TabooApp = {
 
     const muteIcon = document.getElementById("mute-icon");
     if (muteIcon) muteIcon.textContent = SoundEngine.isMuted ? "🔇" : "🔊";
+
+    this.updateSkipButtonLabel();
+    this.updateTabooButtonLabel();
   },
 
   saveSettings: function() {
@@ -1259,6 +1282,8 @@ const TabooApp = {
     P2PEngine.on("MATCH_CONFIG", (payload) => {
       if (payload.config) Object.assign(this.config, payload.config);
       if (payload.teams) this.state.teams = payload.teams;
+      this.updateSkipButtonLabel();
+      this.updateTabooButtonLabel();
       this.showToast("Connected to Team 1's match!");
       const joinStatus = document.getElementById("p2p-join-status");
       if (joinStatus) {
@@ -1269,10 +1294,13 @@ const TabooApp = {
 
     P2PEngine.on("MATCH_START", (payload) => {
       this.closeModal("modal-dual-device");
+      if (payload.config) Object.assign(this.config, payload.config);
       this.state.teams = payload.teams;
       this.state.deck = payload.deck;
       this.state.roundNumber = payload.roundNumber || 1;
       this.state.currentTeamIdx = payload.currentTeamIdx || 0;
+      this.updateSkipButtonLabel();
+      this.updateTabooButtonLabel();
       this.showHandoffScreen();
     });
 
@@ -1286,6 +1314,7 @@ const TabooApp = {
       this.renderCard(this.activeCard);
       this.updateTurnScorePill();
       this.updateSkipButtonLabel();
+      this.updateTabooButtonLabel();
     });
 
     P2PEngine.on("CARD_DRAW", (payload) => {
@@ -1433,8 +1462,16 @@ const TabooApp = {
       this.showToast(SoundEngine.isMuted ? "Audio muted" : "Audio unmuted");
     });
 
+    document.getElementById("toggle-taboo-penalty")?.addEventListener("change", (e) => {
+      this.config.tabooPenalty = e.target.checked ? -2 : -1;
+      this.updateTabooButtonLabel();
+      this.saveSettings();
+      this.showToast(e.target.checked ? "Strict Taboo penalty enabled (-2 pts)" : "Taboo penalty set to -1 pt");
+    });
+
     document.getElementById("toggle-skip-penalty")?.addEventListener("change", (e) => {
       this.config.skipPenalty = e.target.checked ? -1 : 0;
+      this.updateSkipButtonLabel();
       this.saveSettings();
       this.showToast(e.target.checked ? "Skip penalty enabled (-1 pt)" : "Skip penalty disabled (0 pt)");
     });
