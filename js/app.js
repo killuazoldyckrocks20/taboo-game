@@ -45,6 +45,7 @@ const TabooApp = {
     this.setupEventListeners();
     this.renderCategoryChips();
     this.showScreen("screen-welcome");
+    this.checkAndDisplayResumeBanner();
     ConfettiEngine.init();
   },
 
@@ -56,6 +57,9 @@ const TabooApp = {
     const target = document.getElementById(screenId);
     if (target) {
       target.classList.add("active");
+    }
+    if (screenId === "screen-welcome") {
+      this.checkAndDisplayResumeBanner();
     }
   },
 
@@ -169,6 +173,7 @@ const TabooApp = {
   },
 
   startNewGame: function() {
+    this.clearActiveSession();
     // Reset match scores
     this.state.teams.forEach(t => t.score = 0);
     this.state.currentTeamIdx = 0;
@@ -237,6 +242,7 @@ const TabooApp = {
     }
 
     this.showScreen("screen-handoff");
+    this.saveActiveSession();
   },
 
   triggerCountdown: function() {
@@ -291,10 +297,11 @@ const TabooApp = {
 
     // Start timer
     this.startTimer();
+    this.saveActiveSession();
   },
 
-  displayNextCard: function() {
-    const card = this.getNextCard();
+  renderCard: function(card) {
+    if (!card) return;
     this.activeCard = card;
 
     const targetEl = document.getElementById("card-target-word");
@@ -312,7 +319,7 @@ const TabooApp = {
 
     if (listEl) {
       listEl.innerHTML = "";
-      card.taboo.forEach(w => {
+      (card.taboo || []).forEach(w => {
         const item = document.createElement("div");
         item.className = "taboo-word-item";
         item.textContent = w;
@@ -324,6 +331,12 @@ const TabooApp = {
     if (cardEl) {
       cardEl.className = "taboo-card";
     }
+  },
+
+  displayNextCard: function() {
+    const card = this.getNextCard();
+    this.renderCard(card);
+    this.saveActiveSession();
   },
 
   handleCorrect: function() {
@@ -449,6 +462,7 @@ const TabooApp = {
 
       this.state.timeLeft--;
       this.updateTimerDisplay(circle, textEl, circumference);
+      this.saveActiveSession();
 
       // Audio warnings
       if (this.state.timeLeft === 10) {
@@ -494,6 +508,10 @@ const TabooApp = {
   togglePause: function() {
     this.state.isPaused = !this.state.isPaused;
     const overlay = document.getElementById("pause-overlay");
+    const titleEl = document.getElementById("pause-title-text");
+    const descEl = document.getElementById("pause-desc-text");
+    if (titleEl) titleEl.textContent = "GAME PAUSED";
+    if (descEl) descEl.textContent = "Card is hidden to prevent peeking!";
     if (overlay) {
       if (this.state.isPaused) {
         overlay.classList.add("active");
@@ -501,6 +519,7 @@ const TabooApp = {
         overlay.classList.remove("active");
       }
     }
+    this.saveActiveSession();
   },
 
   endTurn: function() {
@@ -526,6 +545,7 @@ const TabooApp = {
     this.renderReviewCardsList();
     this.updateReviewScoreSummary();
     this.showScreen("screen-review");
+    this.saveActiveSession();
   },
 
   renderReviewCardsList: function() {
@@ -559,6 +579,7 @@ const TabooApp = {
           item.status = newStatus;
           this.renderReviewCardsList();
           this.updateReviewScoreSummary();
+          this.saveActiveSession();
         });
       });
 
@@ -629,6 +650,7 @@ const TabooApp = {
   triggerVictory: function(winningTeam) {
     this.state.isGameOver = true;
     this.state.winner = winningTeam;
+    this.clearActiveSession();
 
     const winnerCallout = document.getElementById("victory-winner-team");
     if (winnerCallout) {
@@ -770,6 +792,196 @@ const TabooApp = {
   },
 
   // ==========================================
+  // ACTIVE SESSION PERSISTENCE & RESUME CACHE
+  // ==========================================
+  saveActiveSession: function() {
+    if (this.state.isGameOver) {
+      this.clearActiveSession();
+      return;
+    }
+
+    // Only save once a match has actually begun (handoff, gameplay, or dispute review)
+    const activeScreen = document.querySelector(".screen.active");
+    const screenId = activeScreen ? activeScreen.id : null;
+    if (screenId === "screen-welcome" || screenId === "screen-setup" || screenId === "screen-victory") {
+      return;
+    }
+
+    try {
+      const sessionData = {
+        config: this.config,
+        teams: this.state.teams,
+        currentTeamIdx: this.state.currentTeamIdx,
+        roundNumber: this.state.roundNumber,
+        deck: this.state.deck,
+        currentCardIdx: this.state.currentCardIdx,
+        currentScreen: screenId || "screen-handoff",
+        activeCard: this.activeCard || null,
+        timeLeft: this.state.timeLeft,
+        skipsUsedThisTurn: this.state.skipsUsedThisTurn,
+        turnCards: this.state.turnCards,
+        savedAt: Date.now()
+      };
+      localStorage.setItem("taboo_active_session", JSON.stringify(sessionData));
+    } catch (e) {
+      console.warn("Failed to persist session to localStorage:", e);
+    }
+  },
+
+  hasActiveSession: function() {
+    try {
+      const raw = localStorage.getItem("taboo_active_session");
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      return Boolean(data && data.teams && data.teams.length >= 2);
+    } catch (e) {
+      return false;
+    }
+  },
+
+  getActiveSession: function() {
+    try {
+      const raw = localStorage.getItem("taboo_active_session");
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  clearActiveSession: function() {
+    try {
+      localStorage.removeItem("taboo_active_session");
+    } catch (e) {}
+  },
+
+  checkAndDisplayResumeBanner: function() {
+    const banner = document.getElementById("resume-banner");
+    if (!banner) return;
+
+    const session = this.getActiveSession();
+    if (!session || !session.teams || session.teams.length < 2) {
+      banner.style.display = "none";
+      return;
+    }
+
+    // Format human-friendly details
+    const teamScores = session.teams.map(t => `<span style="color: ${t.color || 'var(--text-primary)'}; font-weight: 700;">${t.name}:</span> ${t.score} pts`).join(" • ");
+    const currentTeam = session.teams[session.currentTeamIdx] || session.teams[0];
+    
+    let stageInfo = "";
+    if (session.currentScreen === "screen-game") {
+      stageInfo = `Mid-round (${session.timeLeft}s left) • ${currentTeam.name}'s turn`;
+    } else if (session.currentScreen === "screen-review") {
+      stageInfo = `Dispute review room • ${currentTeam.name}'s turn`;
+    } else {
+      stageInfo = `Next up: ${currentTeam.name}`;
+    }
+
+    const detailsEl = document.getElementById("resume-details");
+    if (detailsEl) {
+      detailsEl.innerHTML = `<div>Round ${session.roundNumber} • ${stageInfo}</div><div style="margin-top: 5px; font-size: 0.85rem; color: #cbd5e1;">${teamScores}</div>`;
+    }
+
+    const timeEl = document.getElementById("resume-saved-time");
+    if (timeEl && session.savedAt) {
+      const diffSec = Math.floor((Date.now() - session.savedAt) / 1000);
+      if (diffSec < 60) {
+        timeEl.textContent = "Saved just now";
+      } else if (diffSec < 3600) {
+        timeEl.textContent = `Saved ${Math.floor(diffSec / 60)}m ago`;
+      } else {
+        timeEl.textContent = `Saved ${Math.floor(diffSec / 3600)}h ago`;
+      }
+    }
+
+    banner.style.display = "block";
+  },
+
+  restoreSession: function() {
+    const session = this.getActiveSession();
+    if (!session) {
+      this.showToast("No active session found!");
+      this.checkAndDisplayResumeBanner();
+      return;
+    }
+
+    // Restore configuration and state
+    if (session.config) Object.assign(this.config, session.config);
+    this.state.teams = session.teams;
+    this.state.currentTeamIdx = session.currentTeamIdx || 0;
+    this.state.roundNumber = session.roundNumber || 1;
+    this.state.deck = session.deck || [];
+    this.state.currentCardIdx = session.currentCardIdx || 0;
+    this.state.turnCards = session.turnCards || [];
+    this.state.skipsUsedThisTurn = session.skipsUsedThisTurn || 0;
+    this.state.isGameOver = false;
+    this.state.winner = null;
+
+    if (session.currentScreen === "screen-game" && session.activeCard) {
+      // Reconstitute in-flight turn in PAUSED state
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      this.state.timeLeft = typeof session.timeLeft === "number" ? session.timeLeft : this.config.roundDuration;
+      this.state.isPaused = true;
+
+      // Header info
+      const teamDot = document.getElementById("active-team-dot");
+      if (teamDot) teamDot.style.backgroundColor = currentTeam.color;
+
+      const teamName = document.getElementById("active-team-name");
+      if (teamName) teamName.textContent = currentTeam.name;
+
+      this.updateTurnScorePill();
+      this.updateSkipButtonLabel();
+
+      // Render the saved card without advancing deck index
+      this.renderCard(session.activeCard);
+
+      this.showScreen("screen-game");
+
+      // Start timer loop (will idle while isPaused = true)
+      this.startTimer();
+
+      // Open pause overlay with helpful guidance
+      const overlay = document.getElementById("pause-overlay");
+      const titleEl = document.getElementById("pause-title-text");
+      const descEl = document.getElementById("pause-desc-text");
+      if (titleEl) titleEl.textContent = "GAME RESTORED";
+      if (descEl) descEl.textContent = `Paused at ${this.state.timeLeft}s left. Tap Resume Round when your team is ready!`;
+      if (overlay) overlay.classList.add("active");
+
+      this.showToast(`Restored round for ${currentTeam.name}!`);
+    } else if (session.currentScreen === "screen-review") {
+      this.showReviewScreen();
+      this.showToast("Restored dispute review room!");
+    } else {
+      // Default to Handoff screen
+      this.showHandoffScreen();
+      this.showToast("Restored match! Ready for next turn.");
+    }
+  },
+
+  discardActiveSession: function() {
+    this.clearActiveSession();
+    this.checkAndDisplayResumeBanner();
+    this.showToast("Saved game discarded.");
+  },
+
+  handleQuitMatch: function() {
+    if (confirm("End this match and return to the main menu? Current progress will be discarded.")) {
+      if (this.state.timerId) {
+        clearInterval(this.state.timerId);
+        this.state.timerId = null;
+      }
+      this.clearActiveSession();
+      const overlay = document.getElementById("pause-overlay");
+      if (overlay) overlay.classList.remove("active");
+      this.showScreen("screen-welcome");
+      this.checkAndDisplayResumeBanner();
+      this.showToast("Match ended.");
+    }
+  },
+
+  // ==========================================
   // EVENT LISTENERS SETUP
   // ==========================================
   setupEventListeners: function() {
@@ -796,7 +1008,17 @@ const TabooApp = {
       this.saveSettings();
       this.showToast(e.target.checked ? "Skip penalty enabled (-1 pt)" : "Skip penalty disabled (0 pt)");
     });
-      this.showToast(isMuted ? "Audio muted" : "Audio unmuted");
+
+    // Resume Session Banner Buttons
+    document.getElementById("btn-resume-session")?.addEventListener("click", () => this.restoreSession());
+    document.getElementById("btn-discard-session")?.addEventListener("click", () => this.discardActiveSession());
+
+    // Quit Match Button inside Pause Overlay
+    document.getElementById("btn-quit-match")?.addEventListener("click", () => this.handleQuitMatch());
+
+    // Window Unload Auto-Save
+    window.addEventListener("beforeunload", () => {
+      this.saveActiveSession();
     });
 
     document.getElementById("btn-open-rules")?.addEventListener("click", () => this.showModal("modal-rules"));

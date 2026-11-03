@@ -8,12 +8,22 @@ A modern, fully functional, ultra-responsive web application of the classic part
 
 ---
 
+## 🌐 Live GitHub Pages Link
+
+Play the game anytime, anywhere from your phone or desktop:
+👉 **[https://killuazoldyckrocks20.github.io/taboo-game/](https://killuazoldyckrocks20.github.io/taboo-game/)**
+
+---
+
 ## ⚡ Quick Start
 
-### Option 1: Open Directly in Any Web Browser
+### Option 1: Play Live via GitHub Pages
+Visit [killuazoldyckrocks20.github.io/taboo-game](https://killuazoldyckrocks20.github.io/taboo-game/) on any device.
+
+### Option 2: Open Directly in Any Web Browser
 Simply double-click [`index.html`](file:///Users/abhay/.gemini/antigravity/scratch/taboo-game/index.html) or drag it into Chrome, Safari, Firefox, or Edge. No build step or installation required!
 
-### Option 2: Run the Built-in Python Server
+### Option 3: Run the Built-in Python Server
 ```bash
 cd /Users/abhay/.gemini/antigravity/scratch/taboo-game
 python3 server.py
@@ -24,7 +34,16 @@ Then visit **`http://localhost:8000`** on your computer or phone on the same Wi-
 
 ## 🎮 Key Features
 
-1. **320+ Authentic, High-Quality Cards**:
+1. **Session Caching & Auto-Resume**:
+   - Accidental page reload or closed browser? No problem! The game automatically caches match state, teams, scores, active card, dispute log, and remaining timer.
+   - When returning to the welcome screen, an interactive **Match in Progress** banner lets you resume with a single tap.
+   - Restoring a mid-round turn automatically places the game into a **safe paused state** (card hidden and timer paused) so no time is lost and opponents can't peek!
+
+2. **Full PWA Offline Support**:
+   - Progressive Web App with dedicated Service Worker (`sw.js`) and `manifest.json`.
+   - Installable directly to your phone's Home Screen for a native app feel with zero network latency.
+
+3. **320+ Authentic, High-Quality Cards**:
    - Spanning 6 diverse categories:
      - 🎒 *Everyday Objects & Life*
      - 🍕 *Food, Drink & Cuisine*

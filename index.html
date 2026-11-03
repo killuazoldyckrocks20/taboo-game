@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -62,6 +63,25 @@
           <p class="welcome-subtitle">
             Get your team to guess the word, but don't say any of the forbidden <strong>Taboo words</strong>!
           </p>
+
+          <!-- In-Progress Game Resume Banner -->
+          <div id="resume-banner" class="resume-banner" style="display: none;">
+            <div class="resume-header-row">
+              <span class="resume-badge">🔄 MATCH IN PROGRESS</span>
+              <span id="resume-saved-time" class="text-xs text-slate-400">Just now</span>
+            </div>
+            <div id="resume-details" class="resume-details">
+              Round 1 • Team Orange (14 pts) vs Team Blue (10 pts)
+            </div>
+            <div class="resume-actions">
+              <button id="btn-resume-session" type="button" class="btn-resume-primary">
+                <span>▶️ RESUME GAME</span>
+              </button>
+              <button id="btn-discard-session" type="button" class="btn-discard-ghost">
+                <span>Discard</span>
+              </button>
+            </div>
+          </div>
 
           <div class="welcome-nav-buttons">
             <button id="btn-nav-play" class="btn-primary">
@@ -304,11 +324,16 @@
 
         <!-- Pause Overlay -->
         <div id="pause-overlay" class="pause-overlay">
-          <div class="pause-title">GAME PAUSED</div>
-          <div class="pause-desc">Card is hidden to prevent peeking!</div>
-          <button id="btn-resume-game" class="btn-primary" style="padding: 14px 28px;">
-            <span>▶️ RESUME ROUND</span>
-          </button>
+          <div id="pause-title-text" class="pause-title">GAME PAUSED</div>
+          <div id="pause-desc-text" class="pause-desc">Card is hidden to prevent peeking!</div>
+          <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 280px;">
+            <button id="btn-resume-game" class="btn-primary" style="padding: 14px 28px;">
+              <span>▶️ RESUME ROUND</span>
+            </button>
+            <button id="btn-quit-match" type="button" class="btn-danger-outline" style="padding: 11px 20px;">
+              <span>🚪 End Match & Menu</span>
+            </button>
+          </div>
         </div>
 
       </section>
@@ -500,5 +525,14 @@
   <script src="js/audio.js"></script>
   <script src="js/confetti.js"></script>
   <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => {
+          console.log('SW registration error:', err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

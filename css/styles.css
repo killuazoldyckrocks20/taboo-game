@@ -249,7 +249,98 @@ html, body {
   color: var(--text-secondary);
   max-width: 380px;
   line-height: 1.5;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
+}
+
+/* In-Progress Game Resume Banner */
+.resume-banner {
+  width: 100%;
+  max-width: 360px;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(239, 68, 68, 0.1));
+  border: 2px solid rgba(249, 115, 22, 0.45);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 25px -5px rgba(249, 115, 22, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: pulseResumeBorder 3s infinite alternate;
+}
+
+@keyframes pulseResumeBorder {
+  0% { border-color: rgba(249, 115, 22, 0.35); box-shadow: 0 4px 15px rgba(249, 115, 22, 0.2); }
+  100% { border-color: rgba(249, 115, 22, 0.7); box-shadow: 0 8px 30px rgba(249, 115, 22, 0.4); }
+}
+
+.resume-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.resume-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: rgba(249, 115, 22, 0.25);
+  color: #fb923c;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.resume-details {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.resume-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-resume-primary {
+  flex: 1;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #ffffff;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 800;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-resume-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+}
+
+.btn-discard-ghost {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-discard-ghost:hover {
+  background: rgba(239, 68, 68, 0.2);
 }
 
 .welcome-nav-buttons {
