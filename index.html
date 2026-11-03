@@ -79,7 +79,10 @@
 
           <div class="welcome-nav-buttons">
             <button id="btn-nav-play" class="btn-primary">
-              <span>🎮 START GAME</span>
+              <span>🎮 LOCAL MATCH (Pass & Play)</span>
+            </button>
+            <button id="btn-nav-dual-device" class="btn-primary" style="background: linear-gradient(135deg, #2563eb, #7c3aed);">
+              <span>📱 DUAL DEVICE MATCH (2 Phones)</span>
             </button>
             <button id="btn-nav-quick-buzzer" class="btn-secondary">
               <span>🚨 REFEREE BUZZER PAD</span>
@@ -176,6 +179,17 @@
                 <span class="slider"></span>
               </label>
             </div>
+
+            <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px;">
+              <div>
+                <div class="setting-label">🎙️ Record Round Audio (Optional)</div>
+                <div class="setting-sub">Records each round for dispute playback. Stored locally in memory only and deleted after game.</div>
+              </div>
+              <label class="switch">
+                <input id="toggle-record-audio" type="checkbox">
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
 
           <!-- Action Buttons -->
@@ -235,8 +249,17 @@
             <span id="active-team-name" class="team-pill-name">Team Orange</span>
           </div>
 
-          <div id="round-score-display" class="round-score-pill">
-            +0 pts
+          <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 8px;">
+            <div id="recording-indicator" class="recording-badge" style="display: none;">
+              <span class="rec-dot"></span>
+              <span>REC</span>
+            </div>
+            <div id="p2p-ingame-badge" class="p2p-role-badge" style="display: none;">
+              📱 P2P
+            </div>
+            <div id="round-score-display" class="round-score-pill">
+              +0 pts
+            </div>
           </div>
         </div>
 
@@ -356,6 +379,33 @@
           <div class="score-stat-box">
             <span id="review-stat-net" class="score-stat-num text-orange-400">+0</span>
             <span class="score-stat-label">Net Score</span>
+          </div>
+        </div>
+
+        <!-- Audio Review & Dispute Player (shown if audio was recorded for this round) -->
+        <div id="audio-review-player" class="audio-review-card" style="display: none;">
+          <div class="audio-player-header">
+            <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 6px;">
+              <span class="audio-mic-pulse">🎙️</span>
+              <span class="audio-player-title">Round Audio Playback</span>
+            </div>
+            <span id="audio-player-time" class="audio-player-time">0:00 / 0:00</span>
+          </div>
+          
+          <div class="audio-controls-row">
+            <button id="btn-audio-rewind" type="button" class="btn-audio-ctrl" title="Rewind 5s">⏪ -5s</button>
+            <button id="btn-audio-play-pause" type="button" class="btn-audio-play">
+              <span id="audio-play-icon">▶️</span>
+              <span id="audio-play-label">Play Recording</span>
+            </button>
+            <button id="btn-audio-forward" type="button" class="btn-audio-ctrl" title="Forward 5s">+5s ⏩</button>
+          </div>
+
+          <div class="audio-progress-bar-container">
+            <input id="audio-progress-slider" type="range" min="0" max="100" value="0" class="audio-progress-slider">
+          </div>
+          <div class="audio-player-hint">
+            🎧 Listen back to verify disputed taboo words or timing. Stored locally only and deleted after game.
           </div>
         </div>
 
@@ -514,6 +564,80 @@
     </div>
   </div>
 
+  <!-- ========================================================
+       MODAL 4: DUAL DEVICE MULTIPLAYER (2 PHONES)
+       ======================================================== -->
+  <div id="modal-dual-device" class="modal-backdrop">
+    <div class="modal-box" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">📱 2-Device Match (P2P)</h3>
+        <button class="icon-btn text-sm" data-close-modal="modal-dual-device">✕</button>
+      </div>
+
+      <!-- Mode Selector Tabs: Host vs Join -->
+      <div class="p2p-tabs-bar">
+        <button id="p2p-tab-host" type="button" class="p2p-tab active">
+          <span>Host (Team 1)</span>
+        </button>
+        <button id="p2p-tab-join" type="button" class="p2p-tab">
+          <span>Join (Team 2)</span>
+        </button>
+      </div>
+
+      <!-- Host View -->
+      <div id="p2p-view-host" class="p2p-view">
+        <p class="text-sm text-slate-300 mb-3">
+          Share this room code or QR code with <strong>Team 2's device</strong> to join this game:
+        </p>
+
+        <div class="p2p-code-display-box">
+          <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">ROOM CODE</span>
+          <div id="p2p-display-code" class="p2p-big-code">----</div>
+          <button id="btn-copy-room-link" type="button" class="btn-ghost text-xs text-orange-400 py-1" style="justify-content: center;">
+            📋 Copy Invite Link
+          </button>
+        </div>
+
+        <div id="p2p-qrcode-container" class="p2p-qr-box">
+          <!-- Dynamically generated QR Code -->
+        </div>
+
+        <div id="p2p-connection-status" class="p2p-status-pill p2p-status-waiting">
+          Connecting to room...
+        </div>
+
+        <button id="btn-p2p-host-start" type="button" class="btn-primary w-full mt-4" style="display: none; padding: 14px;">
+          <span>🚀 CONFIGURE MATCH & START</span>
+        </button>
+      </div>
+
+      <!-- Join View -->
+      <div id="p2p-view-join" class="p2p-view" style="display: none;">
+        <p class="text-sm text-slate-300 mb-3">
+          Enter the 4-digit room code shown on <strong>Team 1's phone</strong>:
+        </p>
+
+        <div class="p2p-input-group">
+          <input id="input-p2p-room-code" type="text" maxlength="6" placeholder="e.g. 5821" class="p2p-code-input" autocomplete="off" autocapitalize="characters">
+          <button id="btn-p2p-join-submit" type="button" class="btn-primary" style="padding: 12px 20px;">
+            <span>JOIN GAME</span>
+          </button>
+        </div>
+
+        <div id="p2p-join-status" class="p2p-status-pill p2p-status-idle mt-4">
+          Ready to join
+        </div>
+
+        <div class="p2p-help-box mt-4">
+          <p class="text-xs text-slate-400 leading-relaxed">
+            💡 <strong>How it works:</strong> Both phones connect directly via WebRTC. When Team 1 gives clues, Team 2's phone acts as the Watcher & Buzzer! Both phones can score cards, and any disagreements are resolved in the review room with the recorded audio playback.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Confetti Canvas Overlay -->
   <canvas id="confetti-canvas"></canvas>
 
@@ -521,8 +645,12 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- Scripts -->
+  <script src="js/peerjs.min.js"></script>
+  <script src="js/qrcode.min.js"></script>
   <script src="js/cards.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/audio-recorder.js"></script>
+  <script src="js/p2p.js"></script>
   <script src="js/confetti.js"></script>
   <script src="js/app.js"></script>
   <script>

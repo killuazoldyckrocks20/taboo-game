@@ -15,7 +15,8 @@ const TabooApp = {
     skipLimit: 0, // 0 = unlimited
     selectedCategory: "All",
     soundEnabled: true,
-    vibrationEnabled: true
+    vibrationEnabled: true,
+    recordAudio: false
   },
 
   // Game Match State
@@ -28,6 +29,7 @@ const TabooApp = {
     roundNumber: 1,
     isGameOver: false,
     winner: null,
+    roundAudioUrl: null,
 
     // Active Turn State
     deck: [],
@@ -36,17 +38,20 @@ const TabooApp = {
     timerId: null,
     isPaused: false,
     skipsUsedThisTurn: 0,
-    turnCards: [] // { card, status: 'correct'|'taboo'|'skip', originalStatus }
+    turnCards: [], // { card, status: 'correct'|'taboo'|'skip', hostVote, peerVote, originalStatus }
+    currentCardVotes: { hostVote: null, peerVote: null }
   },
 
   init: function() {
     SoundEngine.loadMuteState();
     this.loadSavedSettings();
     this.setupEventListeners();
+    this.setupP2PListeners();
     this.renderCategoryChips();
     this.showScreen("screen-welcome");
     this.checkAndDisplayResumeBanner();
     ConfettiEngine.init();
+    this.checkUrlForRoomCode();
   },
 
   // ==========================================
@@ -182,6 +187,9 @@ const TabooApp = {
 
   startNewGame: function() {
     this.clearActiveSession();
+    AudioRecorder.clearAll();
+    this.state.roundAudioUrl = null;
+
     // Reset match scores
     this.state.teams.forEach(t => t.score = 0);
     this.state.currentTeamIdx = 0;
@@ -191,6 +199,15 @@ const TabooApp = {
 
     // Build and shuffle deck
     this.prepareDeck();
+
+    if (P2PEngine.isConnected && P2PEngine.role === "host") {
+      P2PEngine.send("MATCH_START", {
+        teams: this.state.teams,
+        deck: this.state.deck,
+        roundNumber: this.state.roundNumber,
+        currentTeamIdx: this.state.currentTeamIdx
+      });
+    }
 
     this.showHandoffScreen();
   },
@@ -246,7 +263,14 @@ const TabooApp = {
 
     const desc = document.getElementById("handoff-prompt-desc");
     if (desc) {
-      desc.textContent = `Hand the phone to ${currentTeam.name}'s Clue Giver. Opponents, prepare your buzzer!`;
+      if (P2PEngine.isConnected) {
+        const isMyTurn = (this.state.currentTeamIdx === P2PEngine.myTeamIdx);
+        desc.textContent = isMyTurn 
+          ? `Your Team's Turn! You are giving clues on this phone. Opponents will watch on their phone!`
+          : `Opponent's Turn! Watch their phone and prepare your buzzer for any Taboo slips!`;
+      } else {
+        desc.textContent = `Hand the phone to ${currentTeam.name}'s Clue Giver. Opponents, prepare your buzzer!`;
+      }
     }
 
     this.showScreen("screen-handoff");
@@ -288,6 +312,8 @@ const TabooApp = {
     this.state.isPaused = false;
     this.state.skipsUsedThisTurn = 0;
     this.state.turnCards = [];
+    this.state.currentCardVotes = { hostVote: null, peerVote: null };
+    this.state.roundAudioUrl = null;
 
     // Header info
     const teamDot = document.getElementById("active-team-dot");
@@ -300,12 +326,32 @@ const TabooApp = {
     this.updateSkipButtonLabel();
     this.showScreen("screen-game");
 
+    // Audio recording (if enabled) - records in local memory on Host phone (or single phone)
+    const shouldRecord = this.config.recordAudio && (!P2PEngine.isConnected || P2PEngine.role === "host");
+    const recIndicator = document.getElementById("recording-indicator");
+    if (shouldRecord && AudioRecorder.isSupported()) {
+      AudioRecorder.startRecording().then(success => {
+        if (success && recIndicator) recIndicator.style.display = "flex";
+      });
+    } else {
+      if (recIndicator) recIndicator.style.display = "none";
+    }
+
     // Load first card
     this.displayNextCard();
 
     // Start timer
     this.startTimer();
     this.saveActiveSession();
+
+    if (P2PEngine.isConnected && P2PEngine.role === "host") {
+      P2PEngine.send("TURN_START", {
+        currentTeamIdx: this.state.currentTeamIdx,
+        roundNumber: this.state.roundNumber,
+        timeLeft: this.state.timeLeft,
+        activeCard: this.activeCard
+      });
+    }
   },
 
   renderCard: function(card) {
@@ -343,18 +389,40 @@ const TabooApp = {
 
   displayNextCard: function() {
     const card = this.getNextCard();
+    this.state.currentCardVotes = { hostVote: null, peerVote: null };
     this.renderCard(card);
     this.saveActiveSession();
+
+    if (P2PEngine.isConnected && P2PEngine.role === "host") {
+      P2PEngine.send("CARD_DRAW", { card: card });
+    }
   },
 
   handleCorrect: function() {
     if (this.state.isPaused || !this.activeCard) return;
 
     SoundEngine.playCorrect();
+
+    let hostVote = "correct";
+    let peerVote = "correct";
+    if (P2PEngine.isConnected) {
+      if (P2PEngine.role === "host") {
+        hostVote = "correct";
+        peerVote = (this.state.currentCardVotes && this.state.currentCardVotes.peerVote) || "correct";
+        P2PEngine.send("CARD_ACTION", { action: "correct" });
+      } else {
+        peerVote = "correct";
+        hostVote = (this.state.currentCardVotes && this.state.currentCardVotes.hostVote) || "correct";
+        P2PEngine.send("CARD_ACTION", { action: "correct" });
+      }
+    }
+
     this.state.turnCards.push({
       card: this.activeCard,
       status: "correct",
-      originalStatus: "correct"
+      originalStatus: "correct",
+      hostVote: hostVote,
+      peerVote: peerVote
     });
 
     const cardEl = document.getElementById("active-taboo-card");
@@ -372,10 +440,27 @@ const TabooApp = {
     if (this.state.isPaused || !this.activeCard) return;
 
     SoundEngine.playBuzzer();
+
+    let hostVote = "taboo";
+    let peerVote = "taboo";
+    if (P2PEngine.isConnected) {
+      if (P2PEngine.role === "host") {
+        hostVote = "taboo";
+        peerVote = (this.state.currentCardVotes && this.state.currentCardVotes.peerVote) || "taboo";
+        P2PEngine.send("CARD_ACTION", { action: "taboo" });
+      } else {
+        peerVote = "taboo";
+        hostVote = (this.state.currentCardVotes && this.state.currentCardVotes.hostVote) || "taboo";
+        P2PEngine.send("CARD_ACTION", { action: "taboo" });
+      }
+    }
+
     this.state.turnCards.push({
       card: this.activeCard,
       status: "taboo",
-      originalStatus: "taboo"
+      originalStatus: "taboo",
+      hostVote: hostVote,
+      peerVote: peerVote
     });
 
     const cardEl = document.getElementById("active-taboo-card");
@@ -401,10 +486,26 @@ const TabooApp = {
     this.state.skipsUsedThisTurn++;
     SoundEngine.playSkip();
 
+    let hostVote = "skip";
+    let peerVote = "skip";
+    if (P2PEngine.isConnected) {
+      if (P2PEngine.role === "host") {
+        hostVote = "skip";
+        peerVote = (this.state.currentCardVotes && this.state.currentCardVotes.peerVote) || "skip";
+        P2PEngine.send("CARD_ACTION", { action: "skip" });
+      } else {
+        peerVote = "skip";
+        hostVote = (this.state.currentCardVotes && this.state.currentCardVotes.hostVote) || "skip";
+        P2PEngine.send("CARD_ACTION", { action: "skip" });
+      }
+    }
+
     this.state.turnCards.push({
       card: this.activeCard,
       status: "skip",
-      originalStatus: "skip"
+      originalStatus: "skip",
+      hostVote: hostVote,
+      peerVote: peerVote
     });
 
     this.updateSkipButtonLabel();
@@ -472,6 +573,10 @@ const TabooApp = {
       this.updateTimerDisplay(circle, textEl, circumference);
       this.saveActiveSession();
 
+      if (P2PEngine.isConnected && P2PEngine.role === "host") {
+        P2PEngine.send("TIMER_SYNC", { timeLeft: this.state.timeLeft });
+      }
+
       // Audio warnings
       if (this.state.timeLeft === 10) {
         SoundEngine.playWarning();
@@ -530,13 +635,29 @@ const TabooApp = {
     this.saveActiveSession();
   },
 
-  endTurn: function() {
+  endTurn: async function() {
     if (this.state.timerId) {
       clearInterval(this.state.timerId);
       this.state.timerId = null;
     }
+
+    const recIndicator = document.getElementById("recording-indicator");
+    if (recIndicator) recIndicator.style.display = "none";
+
+    // Stop audio recording if running
+    if (AudioRecorder.isRecording) {
+      const recResult = await AudioRecorder.stopRecording();
+      if (recResult && recResult.url) {
+        this.state.roundAudioUrl = recResult.url;
+      }
+    }
+
     SoundEngine.playTimesUp();
     this.showReviewScreen();
+
+    if (P2PEngine.isConnected && P2PEngine.role === "host") {
+      P2PEngine.send("TURN_END", { turnCards: this.state.turnCards });
+    }
   },
 
   // ==========================================
@@ -550,10 +671,75 @@ const TabooApp = {
       headerTitle.style.color = currentTeam.color;
     }
 
+    // Configure Audio Review Player
+    const playerCard = document.getElementById("audio-review-player");
+    if (playerCard) {
+      if (this.state.roundAudioUrl) {
+        playerCard.style.display = "flex";
+        this.setupAudioPlayer();
+      } else {
+        playerCard.style.display = "none";
+      }
+    }
+
     this.renderReviewCardsList();
     this.updateReviewScoreSummary();
     this.showScreen("screen-review");
     this.saveActiveSession();
+  },
+
+  setupAudioPlayer: function() {
+    const playBtn = document.getElementById("btn-audio-play-pause");
+    const playIcon = document.getElementById("audio-play-icon");
+    const playLabel = document.getElementById("audio-play-label");
+    const timeDisplay = document.getElementById("audio-player-time");
+    const progressSlider = document.getElementById("audio-progress-slider");
+    const rewindBtn = document.getElementById("btn-audio-rewind");
+    const forwardBtn = document.getElementById("btn-audio-forward");
+
+    AudioRecorder.onPlaybackStateChange = (isPlaying) => {
+      if (playIcon) playIcon.textContent = isPlaying ? "⏸️" : "▶️";
+      if (playLabel) playLabel.textContent = isPlaying ? "Pause" : "Play Recording";
+    };
+
+    AudioRecorder.onTimeUpdate = (currTime, totalDuration) => {
+      const formatTime = (sec) => {
+        if (!sec || isNaN(sec)) return "0:00";
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+      };
+      if (timeDisplay) {
+        timeDisplay.textContent = `${formatTime(currTime)} / ${formatTime(totalDuration)}`;
+      }
+      if (progressSlider && totalDuration > 0) {
+        progressSlider.value = Math.round((currTime / totalDuration) * 100);
+      }
+    };
+
+    if (playBtn) {
+      playBtn.onclick = () => {
+        AudioRecorder.togglePlay(this.state.roundAudioUrl);
+      };
+    }
+
+    if (rewindBtn) {
+      rewindBtn.onclick = () => AudioRecorder.skip(-5);
+    }
+
+    if (forwardBtn) {
+      forwardBtn.onclick = () => AudioRecorder.skip(5);
+    }
+
+    if (progressSlider) {
+      progressSlider.oninput = (e) => {
+        const pct = parseFloat(e.target.value) / 100;
+        const audio = AudioRecorder.getAudioElement();
+        if (audio && audio.duration) {
+          AudioRecorder.seek(pct * audio.duration);
+        }
+      };
+    }
   },
 
   renderReviewCardsList: function() {
@@ -567,12 +753,23 @@ const TabooApp = {
     }
 
     this.state.turnCards.forEach((item, idx) => {
+      const isDisputed = item.hostVote && item.peerVote && (item.hostVote !== item.peerVote);
+      let voteBadgeHtml = "";
+      if (item.hostVote && item.peerVote) {
+        if (isDisputed) {
+          voteBadgeHtml = `<div class="review-votes-bar"><span class="review-badge-disputed">⚠️ DISPUTED: Team 1 (${item.hostVote.toUpperCase()}) vs Team 2 (${item.peerVote.toUpperCase()})</span></div>`;
+        } else {
+          voteBadgeHtml = `<div class="review-votes-bar"><span class="review-badge-agreed">✅ Both Agreed: ${item.status.toUpperCase()}</span></div>`;
+        }
+      }
+
       const row = document.createElement("div");
-      row.className = "review-item";
+      row.className = `review-item ${isDisputed ? 'disputed' : ''}`;
       row.innerHTML = `
         <div class="review-item-info">
           <span class="review-item-word">${item.card.word}</span>
           <span class="review-item-cat">${item.card.category || "General"}</span>
+          ${voteBadgeHtml}
         </div>
         <div class="review-toggle-buttons">
           <button type="button" class="review-toggle-btn ${item.status === 'correct' ? 'active-correct' : ''}" data-status="correct">✓ +1</button>
@@ -585,9 +782,17 @@ const TabooApp = {
         btn.addEventListener("click", () => {
           const newStatus = btn.dataset.status;
           item.status = newStatus;
+          if (isDisputed) {
+            item.hostVote = newStatus;
+            item.peerVote = newStatus;
+          }
           this.renderReviewCardsList();
           this.updateReviewScoreSummary();
           this.saveActiveSession();
+
+          if (P2PEngine.isConnected) {
+            P2PEngine.send("DISPUTE_UPDATE", { cardIdx: idx, status: newStatus });
+          }
         });
       });
 
@@ -625,6 +830,8 @@ const TabooApp = {
     const turnPoints = this.calculateCurrentTurnScore();
     currentTeam.score += turnPoints;
 
+    AudioRecorder.pause();
+
     // Check if target score reached (only if playing in Points Mode)
     if (!this.config.isFixedRounds && this.config.targetScore && currentTeam.score >= this.config.targetScore) {
       this.triggerVictory(currentTeam);
@@ -649,6 +856,14 @@ const TabooApp = {
       }
     }
 
+    if (P2PEngine.isConnected && P2PEngine.role === "host") {
+      P2PEngine.send("CONFIRM_SCORE", {
+        teams: this.state.teams,
+        currentTeamIdx: this.state.currentTeamIdx,
+        roundNumber: this.state.roundNumber
+      });
+    }
+
     this.showHandoffScreen();
   },
 
@@ -659,6 +874,7 @@ const TabooApp = {
     this.state.isGameOver = true;
     this.state.winner = winningTeam;
     this.clearActiveSession();
+    AudioRecorder.clearAll();
 
     const winnerCallout = document.getElementById("victory-winner-team");
     if (winnerCallout) {
@@ -788,6 +1004,9 @@ const TabooApp = {
 
     const skipToggle = document.getElementById("toggle-skip-penalty");
     if (skipToggle) skipToggle.checked = (this.config.skipPenalty < 0);
+
+    const audioToggle = document.getElementById("toggle-record-audio");
+    if (audioToggle) audioToggle.checked = Boolean(this.config.recordAudio);
 
     const muteIcon = document.getElementById("mute-icon");
     if (muteIcon) muteIcon.textContent = SoundEngine.isMuted ? "🔇" : "🔊";
@@ -981,11 +1200,172 @@ const TabooApp = {
         this.state.timerId = null;
       }
       this.clearActiveSession();
+      AudioRecorder.clearAll();
       const overlay = document.getElementById("pause-overlay");
       if (overlay) overlay.classList.remove("active");
       this.showScreen("screen-welcome");
       this.checkAndDisplayResumeBanner();
       this.showToast("Match ended.");
+    }
+  },
+
+  // ==========================================
+  // PEER-TO-PEER 2-DEVICE SYNC ENGINE
+  // ==========================================
+  setupP2PListeners: function() {
+    P2PEngine.on("CLIENT_HELLO", (payload) => {
+      this.showToast("📱 Team 2 connected from second phone!");
+      const startHostBtn = document.getElementById("btn-p2p-host-start");
+      if (startHostBtn) startHostBtn.style.display = "block";
+
+      P2PEngine.send("MATCH_CONFIG", {
+        config: this.config,
+        teams: this.state.teams
+      });
+    });
+
+    P2PEngine.on("MATCH_CONFIG", (payload) => {
+      if (payload.config) Object.assign(this.config, payload.config);
+      if (payload.teams) this.state.teams = payload.teams;
+      this.showToast("Connected to Team 1's match!");
+      const joinStatus = document.getElementById("p2p-join-status");
+      if (joinStatus) {
+        joinStatus.textContent = "Connected! Waiting for host to start...";
+        joinStatus.className = "p2p-status-pill p2p-status-connected";
+      }
+    });
+
+    P2PEngine.on("MATCH_START", (payload) => {
+      this.closeModal("modal-dual-device");
+      this.state.teams = payload.teams;
+      this.state.deck = payload.deck;
+      this.state.roundNumber = payload.roundNumber || 1;
+      this.state.currentTeamIdx = payload.currentTeamIdx || 0;
+      this.showHandoffScreen();
+    });
+
+    P2PEngine.on("TURN_START", (payload) => {
+      this.state.currentTeamIdx = payload.currentTeamIdx;
+      this.state.roundNumber = payload.roundNumber;
+      this.state.timeLeft = payload.timeLeft;
+      this.activeCard = payload.activeCard;
+      this.state.turnCards = [];
+      this.showScreen("screen-game");
+      this.renderCard(this.activeCard);
+      this.updateTurnScorePill();
+      this.updateSkipButtonLabel();
+    });
+
+    P2PEngine.on("CARD_DRAW", (payload) => {
+      this.activeCard = payload.card;
+      this.renderCard(this.activeCard);
+    });
+
+    P2PEngine.on("CARD_ACTION", (payload) => {
+      if (payload.action === "taboo") {
+        SoundEngine.playBuzzer();
+        this.showToast("🚨 Opponent buzzed TABOO!");
+      } else if (payload.action === "correct") {
+        SoundEngine.playCorrect();
+      }
+
+      if (P2PEngine.role === "host") {
+        this.recordCardVote("peer", payload.action);
+      } else {
+        this.recordCardVote("host", payload.action);
+      }
+    });
+
+    P2PEngine.on("TIMER_SYNC", (payload) => {
+      if (P2PEngine.role === "client") {
+        this.state.timeLeft = payload.timeLeft;
+        const circle = document.getElementById("timer-circle-progress");
+        const textEl = document.getElementById("timer-display-text");
+        const circumference = 2 * Math.PI * 30;
+        this.updateTimerDisplay(circle, textEl, circumference);
+      }
+    });
+
+    P2PEngine.on("TURN_END", (payload) => {
+      this.state.turnCards = payload.turnCards || [];
+      SoundEngine.playTimesUp();
+      this.showReviewScreen();
+    });
+
+    P2PEngine.on("DISPUTE_UPDATE", (payload) => {
+      if (this.state.turnCards[payload.cardIdx]) {
+        this.state.turnCards[payload.cardIdx].status = payload.status;
+        this.renderReviewCardsList();
+        this.updateReviewScoreSummary();
+      }
+    });
+
+    P2PEngine.on("CONFIRM_SCORE", (payload) => {
+      this.state.teams = payload.teams;
+      this.state.currentTeamIdx = payload.currentTeamIdx;
+      this.state.roundNumber = payload.roundNumber;
+      this.showHandoffScreen();
+    });
+  },
+
+  recordCardVote: function(source, action) {
+    if (!this.state.currentCardVotes) {
+      this.state.currentCardVotes = { hostVote: null, peerVote: null };
+    }
+    if (source === "host") {
+      this.state.currentCardVotes.hostVote = action;
+    } else {
+      this.state.currentCardVotes.peerVote = action;
+    }
+  },
+
+  initDualDeviceHost: function() {
+    const codeEl = document.getElementById("p2p-display-code");
+    const qrContainer = document.getElementById("p2p-qrcode-container");
+
+    P2PEngine.initHost().then(roomCode => {
+      if (codeEl) codeEl.textContent = roomCode;
+      if (qrContainer && typeof QRCode !== "undefined") {
+        qrContainer.innerHTML = "";
+        const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+        new QRCode(qrContainer, {
+          text: joinUrl,
+          width: 140,
+          height: 140,
+          colorDark: "#0f172a",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      }
+    }).catch(err => {
+      console.warn("Host init error:", err);
+      P2PEngine.updateConnectionStatus("Signaling unavailable. Re-attempting...", "disconnected");
+    });
+  },
+
+  checkUrlForRoomCode: function() {
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get("room");
+    if (room) {
+      this.showModal("modal-dual-device");
+      const joinTab = document.getElementById("p2p-tab-join");
+      const hostView = document.getElementById("p2p-view-host");
+      const joinView = document.getElementById("p2p-view-join");
+      const hostTab = document.getElementById("p2p-tab-host");
+
+      if (joinTab && hostTab && hostView && joinView) {
+        hostTab.classList.remove("active");
+        joinTab.classList.add("active");
+        hostView.style.display = "none";
+        joinView.style.display = "block";
+      }
+
+      const input = document.getElementById("input-p2p-room-code");
+      if (input) input.value = room;
+
+      P2PEngine.joinRoom(room).catch(err => {
+        this.showToast("Could not join room: " + err.message);
+      });
     }
   },
 
@@ -1015,6 +1395,94 @@ const TabooApp = {
       this.config.skipPenalty = e.target.checked ? -1 : 0;
       this.saveSettings();
       this.showToast(e.target.checked ? "Skip penalty enabled (-1 pt)" : "Skip penalty disabled (0 pt)");
+    });
+
+    document.getElementById("toggle-record-audio")?.addEventListener("change", (e) => {
+      this.config.recordAudio = e.target.checked;
+      this.saveSettings();
+      if (e.target.checked) {
+        if (!AudioRecorder.isSupported()) {
+          this.showToast("Audio recording not supported in this browser.");
+          e.target.checked = false;
+          this.config.recordAudio = false;
+        } else {
+          AudioRecorder.requestPermission().then(granted => {
+            if (granted) {
+              this.showToast("🎙️ Round audio recording enabled!");
+            } else {
+              this.showToast("Microphone permission denied.");
+              e.target.checked = false;
+              this.config.recordAudio = false;
+            }
+          });
+        }
+      } else {
+        this.showToast("Audio recording disabled.");
+      }
+    });
+
+    // Dual Device Modal Open
+    document.getElementById("btn-nav-dual-device")?.addEventListener("click", () => {
+      this.showModal("modal-dual-device");
+      this.initDualDeviceHost();
+    });
+
+    // P2P Tab switching
+    document.getElementById("p2p-tab-host")?.addEventListener("click", () => {
+      document.getElementById("p2p-tab-host").classList.add("active");
+      document.getElementById("p2p-tab-join").classList.remove("active");
+      document.getElementById("p2p-view-host").style.display = "block";
+      document.getElementById("p2p-view-join").style.display = "none";
+      this.initDualDeviceHost();
+    });
+
+    document.getElementById("p2p-tab-join")?.addEventListener("click", () => {
+      document.getElementById("p2p-tab-join").classList.add("active");
+      document.getElementById("p2p-tab-host").classList.remove("active");
+      document.getElementById("p2p-view-join").style.display = "block";
+      document.getElementById("p2p-view-host").style.display = "none";
+    });
+
+    // Join submit
+    document.getElementById("btn-p2p-join-submit")?.addEventListener("click", () => {
+      const codeInput = document.getElementById("input-p2p-room-code");
+      const code = codeInput ? codeInput.value.trim() : "";
+      if (!code) {
+        this.showToast("Please enter a room code!");
+        return;
+      }
+      const statusEl = document.getElementById("p2p-join-status");
+      if (statusEl) {
+        statusEl.textContent = "Connecting to Team 1's phone...";
+        statusEl.className = "p2p-status-pill p2p-status-waiting";
+      }
+      P2PEngine.joinRoom(code).then(() => {
+        this.showToast("Connected to Team 1! Waiting for match to start...");
+      }).catch(err => {
+        if (statusEl) {
+          statusEl.textContent = "Failed to connect: " + err.message;
+          statusEl.className = "p2p-status-pill p2p-status-disconnected";
+        }
+      });
+    });
+
+    // Copy room invite link
+    document.getElementById("btn-copy-room-link")?.addEventListener("click", () => {
+      const code = P2PEngine.roomCode;
+      if (!code) return;
+      const url = `${window.location.origin}${window.location.pathname}?room=${code}`;
+      navigator.clipboard.writeText(url).then(() => {
+        this.showToast("Invite link copied to clipboard!");
+      }).catch(() => {
+        prompt("Copy this invite link:", url);
+      });
+    });
+
+    // Host start match button
+    document.getElementById("btn-p2p-host-start")?.addEventListener("click", () => {
+      this.closeModal("modal-dual-device");
+      this.renderTeamsSetupList();
+      this.showScreen("screen-setup");
     });
 
     // Resume Session Banner Buttons

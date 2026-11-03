@@ -17,6 +17,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
 
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+            return
+        return super().do_GET()
+
     def end_headers(self):
         # Enable caching-free testing
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
@@ -24,6 +33,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     os.chdir(DIRECTORY)
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), Handler) as httpd:
         url = f"http://localhost:{PORT}"
         print(f"🎉 Taboo Game Server running at: {url}")
