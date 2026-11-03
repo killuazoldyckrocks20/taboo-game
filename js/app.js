@@ -90,7 +90,13 @@ const TabooApp = {
     setTimeout(() => {
       toast.style.opacity = "0";
       toast.style.transition = "opacity 0.3s ease";
-      setTimeout(() => toast.remove(), 300);
+      setTimeout(() => {
+        if (toast.remove) {
+          toast.remove();
+        } else if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
     }, duration);
   },
 
@@ -159,9 +165,11 @@ const TabooApp = {
       `;
 
       const input = row.querySelector(".team-name-input");
-      input.addEventListener("input", (e) => {
-        team.name = e.target.value.trim() || `Team ${idx + 1}`;
-      });
+      if (input) {
+        input.addEventListener("input", (e) => {
+          team.name = e.target.value.trim() || `Team ${idx + 1}`;
+        });
+      }
 
       const removeBtn = row.querySelector("[data-remove-idx]");
       if (removeBtn) {

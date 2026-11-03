@@ -1497,9 +1497,9 @@ const DEFAULT_CARDS = [
   },
   {
     word: "DENTIST",
-    taboo: [TEETH, DRILL, SMILE, CAVITY, MOUTH],
-    category: Professions,
-    difficulty: easy
+    taboo: ["TEETH", "DRILL", "SMILE", "CAVITY", "MOUTH"],
+    category: "Professions",
+    difficulty: "easy"
   },
   {
     word: "DETECTIVE",
@@ -1508,7 +1508,7 @@ const DEFAULT_CARDS = [
     difficulty: "easy"
   },
   {
-    word: "LIF GUARD",
+    word: "LIFEGUARD",
     taboo: ["POOL", "SWIM", "BEACH", "RESCUE", "WHISTLE"],
     category: "Professions",
     difficulty: "easy"

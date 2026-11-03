@@ -48,6 +48,9 @@
 html, body {
   width: 100%;
   height: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
   overflow: hidden;
   font-family: var(--font-family);
   background-color: var(--bg-primary);
@@ -58,6 +61,7 @@ html, body {
 #app-container {
   width: 100%;
   height: 100%;
+  height: 100dvh;
   max-width: 580px;
   margin: 0 auto;
   display: flex;
@@ -70,13 +74,16 @@ html, body {
 
 /* Header Bar */
 .app-header {
-  height: 60px;
-  padding: 10px 16px;
+  height: calc(60px + env(safe-area-inset-top, 0px));
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  padding-bottom: 10px;
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
+  padding-right: calc(16px + env(safe-area-inset-right, 0px));
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(12px);
   z-index: 50;
   flex-shrink: 0;
@@ -152,8 +159,10 @@ html, body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 20px 16px;
+  padding: 16px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   opacity: 0;
   pointer-events: none;
   transform: translateY(12px) scale(0.98);
@@ -166,6 +175,19 @@ html, body {
   transform: translateY(0) scale(1);
 }
 
+/* Confetti Overlay Canvas */
+#confetti-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
+  pointer-events: none;
+  z-index: 9999;
+}
+
 /* ==========================================================================
    1. WELCOME SCREEN
    ========================================================================== */
@@ -174,9 +196,11 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   text-align: center;
-  padding: 20px 10px;
+  padding: 12px 10px calc(24px + env(safe-area-inset-bottom, 0px)) 10px;
+  margin: auto 0;
+  width: 100%;
 }
 
 .hero-logo-box {
@@ -1436,4 +1460,59 @@ input:checked + .slider:before {
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
+}
+
+/* Responsive Mobile Adjustments */
+@media (max-width: 480px), (max-height: 740px) {
+  .hero-logo-box {
+    margin-bottom: 12px;
+  }
+  .hero-logo-card {
+    width: 130px;
+    height: 165px;
+    padding: 10px;
+  }
+  .hero-card-word {
+    font-size: 1.25rem;
+    margin-bottom: 8px;
+    padding-bottom: 2px;
+  }
+  .hero-taboo-item {
+    font-size: 0.72rem;
+    padding: 2px 6px;
+  }
+  .welcome-title {
+    font-size: 1.65rem;
+    margin-bottom: 6px;
+  }
+  .welcome-subtitle {
+    font-size: 0.88rem;
+    margin-bottom: 16px;
+  }
+  .welcome-nav-buttons {
+    gap: 10px;
+  }
+  .welcome-nav-buttons .btn-primary {
+    padding: 13px 18px;
+    font-size: 1rem;
+  }
+  .welcome-nav-buttons .btn-secondary {
+    padding: 10px 14px;
+    font-size: 0.88rem;
+  }
+  .taboo-card {
+    min-height: 250px;
+    padding: 14px 16px;
+  }
+  .target-word {
+    font-size: 1.8rem;
+  }
+  .taboo-word-item {
+    padding: 8px 12px;
+    font-size: 0.95rem;
+  }
+  .btn-game-action {
+    padding: 12px 6px;
+    min-height: 64px;
+  }
 }
