@@ -453,6 +453,10 @@ const TabooApp = {
     this.state.currentCardVotes = { hostVote: null, peerVote: null };
     this.state.roundAudioUrl = null;
 
+    // Snapshot base scores so in-turn pause scoring and dispute edits are always 100% exact
+    this.state.teams.forEach(t => t.baseScore = t.score);
+    this.state.players.forEach(p => p.baseScore = p.score);
+
     // Header info
     const teamDot = document.getElementById("active-team-dot");
     const teamName = document.getElementById("active-team-name");
@@ -468,7 +472,7 @@ const TabooApp = {
       if (teamName) teamName.textContent = currentTeam.name;
     }
 
-    // Hide FFA scoring modal
+    // Hide word score pause modal
     const ffaModal = document.getElementById("ffa-scoring-modal");
     if (ffaModal) ffaModal.style.display = "none";
 
@@ -498,6 +502,7 @@ const TabooApp = {
     if (P2PEngine.isConnected && P2PEngine.role === "host") {
       P2PEngine.send("TURN_START", {
         gameFormat: this.config.gameFormat,
+        teams: this.state.teams,
         currentTeamIdx: this.state.currentTeamIdx,
         ffaTurnIndex: this.state.ffaTurnIndex,
         players: this.state.players,
@@ -557,88 +562,12 @@ const TabooApp = {
 
   handleCorrect: function() {
     if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
-
-    if (this.config.gameFormat === "ffa") {
-      this.pauseWordForScoring("correct");
-      return;
-    }
-
-    SoundEngine.playCorrect();
-
-    let hostVote = "correct";
-    let peerVote = "correct";
-    if (P2PEngine.isConnected) {
-      if (P2PEngine.role === "host") {
-        hostVote = "correct";
-        peerVote = (this.state.currentCardVotes && this.state.currentCardVotes.peerVote) || "correct";
-        P2PEngine.send("CARD_ACTION", { action: "correct" });
-      } else {
-        peerVote = "correct";
-        hostVote = (this.state.currentCardVotes && this.state.currentCardVotes.hostVote) || "correct";
-        P2PEngine.send("CARD_ACTION", { action: "correct" });
-      }
-    }
-
-    this.state.turnCards.push({
-      card: this.activeCard,
-      status: "correct",
-      originalStatus: "correct",
-      hostVote: hostVote,
-      peerVote: peerVote
-    });
-
-    const cardEl = document.getElementById("active-taboo-card");
-    if (cardEl) {
-      cardEl.classList.add("card-animate-correct");
-      setTimeout(() => this.displayNextCard(), 180);
-    } else {
-      this.displayNextCard();
-    }
-
-    this.updateTurnScorePill();
+    this.pauseWordForScoring("correct");
   },
 
   handleTaboo: function() {
     if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
-
-    if (this.config.gameFormat === "ffa") {
-      this.pauseWordForScoring("taboo");
-      return;
-    }
-
-    SoundEngine.playBuzzer();
-
-    let hostVote = "taboo";
-    let peerVote = "taboo";
-    if (P2PEngine.isConnected) {
-      if (P2PEngine.role === "host") {
-        hostVote = "taboo";
-        peerVote = (this.state.currentCardVotes && this.state.currentCardVotes.peerVote) || "taboo";
-        P2PEngine.send("CARD_ACTION", { action: "taboo" });
-      } else {
-        peerVote = "taboo";
-        hostVote = (this.state.currentCardVotes && this.state.currentCardVotes.hostVote) || "taboo";
-        P2PEngine.send("CARD_ACTION", { action: "taboo" });
-      }
-    }
-
-    this.state.turnCards.push({
-      card: this.activeCard,
-      status: "taboo",
-      originalStatus: "taboo",
-      hostVote: hostVote,
-      peerVote: peerVote
-    });
-
-    const cardEl = document.getElementById("active-taboo-card");
-    if (cardEl) {
-      cardEl.classList.add("card-animate-taboo");
-      setTimeout(() => this.displayNextCard(), 250);
-    } else {
-      this.displayNextCard();
-    }
-
-    this.updateTurnScorePill();
+    this.pauseWordForScoring("taboo");
   },
 
   handleSkip: function() {
@@ -650,57 +579,17 @@ const TabooApp = {
       return;
     }
 
-    if (this.config.gameFormat === "ffa") {
-      this.pauseWordForScoring("skip");
-      return;
-    }
-
-    this.state.skipsUsedThisTurn++;
-    SoundEngine.playSkip();
-
-    let hostVote = "skip";
-    let peerVote = "skip";
-    if (P2PEngine.isConnected) {
-      if (P2PEngine.role === "host") {
-        hostVote = "skip";
-        peerVote = (this.state.currentCardVotes && this.state.currentCardVotes.peerVote) || "skip";
-        P2PEngine.send("CARD_ACTION", { action: "skip" });
-      } else {
-        peerVote = "skip";
-        hostVote = (this.state.currentCardVotes && this.state.currentCardVotes.hostVote) || "skip";
-        P2PEngine.send("CARD_ACTION", { action: "skip" });
-      }
-    }
-
-    this.state.turnCards.push({
-      card: this.activeCard,
-      status: "skip",
-      originalStatus: "skip",
-      hostVote: hostVote,
-      peerVote: peerVote
-    });
-
-    this.updateSkipButtonLabel();
-
-    const cardEl = document.getElementById("active-taboo-card");
-    if (cardEl) {
-      cardEl.classList.add("card-animate-skip");
-      setTimeout(() => this.displayNextCard(), 180);
-    } else {
-      this.displayNextCard();
-    }
-
-    this.updateTurnScorePill();
+    this.pauseWordForScoring("skip");
   },
 
   // ==========================================
-  // FREE-FOR-ALL (INDIVIDUAL) WORD SCORING & PAUSE
+  // UNIVERSAL WORD SCORING & IN-BETWEEN WORD PAUSE
+  // (Both Team-Based & Free-For-All Individual Modes)
   // ==========================================
   pauseWordForScoring: function(status) {
     if (this.state.isPaused || !this.activeCard) return;
 
     this.state.isWordScorePaused = true;
-    const clueGiver = this.getCurrentClueGiver();
 
     // Broadcast pause state to Device 2
     if (P2PEngine.isConnected) {
@@ -715,78 +604,151 @@ const TabooApp = {
 
     if (modal) modal.style.display = "flex";
 
-    if (status === "correct") {
-      SoundEngine.playCorrect();
-      if (stepGuesser) stepGuesser.style.display = "block";
-      if (stepNext) stepNext.style.display = "none";
+    if (this.config.gameFormat === "ffa") {
+      const clueGiver = this.getCurrentClueGiver();
+      if (status === "correct") {
+        SoundEngine.playCorrect();
+        if (stepGuesser) stepGuesser.style.display = "block";
+        if (stepNext) stepNext.style.display = "none";
 
-      if (grid) {
-        grid.innerHTML = "";
-        const guessers = this.getCurrentGuessers();
-        guessers.forEach(p => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "ffa-guesser-btn";
-          btn.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block;"></span> <span>${p.name}</span>`;
-          btn.addEventListener("click", () => this.selectGuesser(p.id));
-          grid.appendChild(btn);
+        if (grid) {
+          grid.innerHTML = "";
+          const guessers = this.getCurrentGuessers();
+          guessers.forEach(p => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "ffa-guesser-btn";
+            btn.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block;"></span> <span>${p.name}</span>`;
+            btn.addEventListener("click", () => this.selectGuesser(p.id));
+            grid.appendChild(btn);
+          });
+
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "ffa-guesser-btn";
+          cancelBtn.style.opacity = "0.75";
+          cancelBtn.style.borderColor = "rgba(255,255,255,0.2)";
+          cancelBtn.innerHTML = `<span>✕ Cancel / Nobody</span>`;
+          cancelBtn.addEventListener("click", () => this.selectGuesser("none"));
+          grid.appendChild(cancelBtn);
+        }
+      } else if (status === "taboo") {
+        SoundEngine.playBuzzer();
+        const penalty = this.config.tabooPenalty;
+
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "taboo",
+          originalStatus: "taboo",
+          clueGiverId: clueGiver.id,
+          clueGiverName: clueGiver.name
         });
 
-        const cancelBtn = document.createElement("button");
-        cancelBtn.type = "button";
-        cancelBtn.className = "ffa-guesser-btn";
-        cancelBtn.style.opacity = "0.75";
-        cancelBtn.style.borderColor = "rgba(255,255,255,0.2)";
-        cancelBtn.innerHTML = `<span>✕ Cancel / Nobody</span>`;
-        cancelBtn.addEventListener("click", () => this.selectGuesser("none"));
-        grid.appendChild(cancelBtn);
+        this.recalculateScoresFromTurnCards();
+
+        if (stepGuesser) stepGuesser.style.display = "none";
+        if (stepNext) stepNext.style.display = "block";
+        if (banner) {
+          banner.className = "ffa-outcome-banner ffa-outcome-taboo";
+          banner.textContent = `🚨 Taboo violation by ${clueGiver.name}! (${penalty} pts)`;
+        }
+
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("taboo", this.activeCard.word, clueGiver.name, null, penalty);
+      } else if (status === "skip") {
+        this.state.skipsUsedThisTurn++;
+        SoundEngine.playSkip();
+        const penalty = this.config.skipPenalty;
+
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "skip",
+          originalStatus: "skip",
+          clueGiverId: clueGiver.id,
+          clueGiverName: clueGiver.name
+        });
+
+        this.recalculateScoresFromTurnCards();
+
+        if (stepGuesser) stepGuesser.style.display = "none";
+        if (stepNext) stepNext.style.display = "block";
+        if (banner) {
+          banner.className = "ffa-outcome-banner ffa-outcome-skip";
+          banner.textContent = `↷ Skipped by ${clueGiver.name} (${penalty} pt)`;
+        }
+
+        this.updateSkipButtonLabel();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("skip", this.activeCard.word, clueGiver.name, null, penalty);
       }
-    } else if (status === "taboo") {
-      SoundEngine.playBuzzer();
-      const penalty = this.config.tabooPenalty;
-      clueGiver.score += penalty;
+    } else {
+      // Classic Team Mode
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      if (status === "correct") {
+        SoundEngine.playCorrect();
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "correct",
+          originalStatus: "correct",
+          teamName: currentTeam.name
+        });
 
-      this.state.turnCards.push({
-        card: this.activeCard,
-        status: "taboo",
-        originalStatus: "taboo",
-        clueGiverId: clueGiver.id,
-        clueGiverName: clueGiver.name
-      });
+        this.recalculateScoresFromTurnCards();
 
-      if (stepGuesser) stepGuesser.style.display = "none";
-      if (stepNext) stepNext.style.display = "block";
-      if (banner) {
-        banner.className = "ffa-outcome-banner ffa-outcome-taboo";
-        banner.textContent = `🚨 Taboo violation by ${clueGiver.name}! (${penalty} pts)`;
+        if (stepGuesser) stepGuesser.style.display = "none";
+        if (stepNext) stepNext.style.display = "block";
+        if (banner) {
+          banner.className = "ffa-outcome-banner ffa-outcome-correct";
+          banner.textContent = `✓ CORRECT GUESS! (+1 pt to ${currentTeam.name})`;
+        }
+
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("correct", this.activeCard.word, currentTeam.name, null, 1);
+      } else if (status === "taboo") {
+        SoundEngine.playBuzzer();
+        const penalty = this.config.tabooPenalty;
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "taboo",
+          originalStatus: "taboo",
+          teamName: currentTeam.name
+        });
+
+        this.recalculateScoresFromTurnCards();
+
+        if (stepGuesser) stepGuesser.style.display = "none";
+        if (stepNext) stepNext.style.display = "block";
+        if (banner) {
+          banner.className = "ffa-outcome-banner ffa-outcome-taboo";
+          banner.textContent = `🚨 TABOO FOUL! (${penalty} pts to ${currentTeam.name})`;
+        }
+
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("taboo", this.activeCard.word, currentTeam.name, null, penalty);
+      } else if (status === "skip") {
+        this.state.skipsUsedThisTurn++;
+        SoundEngine.playSkip();
+        const penalty = this.config.skipPenalty;
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "skip",
+          originalStatus: "skip",
+          teamName: currentTeam.name
+        });
+
+        this.recalculateScoresFromTurnCards();
+
+        if (stepGuesser) stepGuesser.style.display = "none";
+        if (stepNext) stepNext.style.display = "block";
+        if (banner) {
+          banner.className = "ffa-outcome-banner ffa-outcome-skip";
+          banner.textContent = `↷ CARD SKIPPED (${penalty} pt)`;
+        }
+
+        this.updateSkipButtonLabel();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("skip", this.activeCard.word, currentTeam.name, null, penalty);
       }
-
-      this.updateTurnScorePill();
-      this.broadcastFFAEvent("taboo", this.activeCard.word, clueGiver.name, null, penalty);
-    } else if (status === "skip") {
-      this.state.skipsUsedThisTurn++;
-      SoundEngine.playSkip();
-      const penalty = this.config.skipPenalty;
-      clueGiver.score += penalty;
-
-      this.state.turnCards.push({
-        card: this.activeCard,
-        status: "skip",
-        originalStatus: "skip",
-        clueGiverId: clueGiver.id,
-        clueGiverName: clueGiver.name
-      });
-
-      if (stepGuesser) stepGuesser.style.display = "none";
-      if (stepNext) stepNext.style.display = "block";
-      if (banner) {
-        banner.className = "ffa-outcome-banner ffa-outcome-skip";
-        banner.textContent = `↷ Skipped by ${clueGiver.name} (${penalty} pt)`;
-      }
-
-      this.updateSkipButtonLabel();
-      this.updateTurnScorePill();
-      this.broadcastFFAEvent("skip", this.activeCard.word, clueGiver.name, null, penalty);
     }
   },
 
@@ -805,10 +767,6 @@ const TabooApp = {
     const guesser = this.state.players.find(p => p.id === guesserId);
     if (!guesser) return;
 
-    // Both Clue Giver AND Guesser receive +1 point!
-    clueGiver.score += 1;
-    guesser.score += 1;
-
     this.state.turnCards.push({
       card: this.activeCard,
       status: "correct",
@@ -818,6 +776,8 @@ const TabooApp = {
       guesserId: guesser.id,
       guesserName: guesser.name
     });
+
+    this.recalculateScoresFromTurnCards();
 
     const stepGuesser = document.getElementById("ffa-step-select-guesser");
     const stepNext = document.getElementById("ffa-step-next-word");
@@ -831,7 +791,36 @@ const TabooApp = {
     }
 
     this.updateTurnScorePill();
-    this.broadcastFFAEvent("correct", this.activeCard.word, clueGiver.name, guesser.name, 1);
+    this.broadcastScoreEvent("correct", this.activeCard.word, clueGiver.name, guesser.name, 1);
+  },
+
+  undoLastCardScore: function() {
+    if (!this.state.isWordScorePaused || this.state.turnCards.length === 0) return;
+    const removed = this.state.turnCards.pop();
+    if (removed && removed.status === "skip") {
+      this.state.skipsUsedThisTurn = Math.max(0, this.state.skipsUsedThisTurn - 1);
+      this.updateSkipButtonLabel();
+    }
+    this.recalculateScoresFromTurnCards();
+    this.updateTurnScorePill();
+
+    const modal = document.getElementById("ffa-scoring-modal");
+    if (modal) modal.style.display = "none";
+    this.state.isWordScorePaused = false;
+
+    if (P2PEngine.isConnected) {
+      P2PEngine.send("TIMER_SYNC", { timeLeft: this.state.timeLeft, isPaused: false });
+      P2PEngine.send("WORD_SCORED", {
+        gameFormat: this.config.gameFormat,
+        outcome: "undo",
+        targetWord: this.activeCard.word,
+        feedText: `↩️ Undone: <strong>${this.activeCard.word}</strong>`,
+        players: this.state.players,
+        teams: this.state.teams,
+        timeLeft: this.state.timeLeft,
+        isPaused: false
+      });
+    }
   },
 
   proceedToNextWord: function() {
@@ -842,6 +831,10 @@ const TabooApp = {
     this.displayNextCard();
 
     if (P2PEngine.isConnected) {
+      P2PEngine.send("NEXT_WORD", {
+        isPaused: false,
+        timeLeft: this.state.timeLeft
+      });
       P2PEngine.send("FFA_NEXT_WORD", {
         isPaused: false,
         timeLeft: this.state.timeLeft
@@ -849,28 +842,70 @@ const TabooApp = {
     }
   },
 
-  broadcastFFAEvent: function(outcome, targetWord, clueGiverName, guesserName, points) {
+  recalculateScoresFromTurnCards: function() {
+    if (this.config.gameFormat === "ffa") {
+      this.state.players.forEach(p => {
+        p.score = (p.baseScore !== undefined ? p.baseScore : p.score);
+      });
+      const clueGiver = this.getCurrentClueGiver();
+      this.state.turnCards.forEach(item => {
+        if (item.status === "correct") {
+          if (clueGiver) clueGiver.score += 1;
+          if (item.guesserId) {
+            const g = this.state.players.find(p => String(p.id) === String(item.guesserId));
+            if (g) g.score += 1;
+          }
+        } else if (item.status === "taboo") {
+          if (clueGiver) clueGiver.score += this.config.tabooPenalty;
+        } else if (item.status === "skip") {
+          if (clueGiver) clueGiver.score += this.config.skipPenalty;
+        }
+      });
+    } else {
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      if (currentTeam) {
+        currentTeam.score = (currentTeam.baseScore !== undefined ? currentTeam.baseScore : 0) + this.calculateCurrentTurnScore();
+      }
+    }
+  },
+
+  broadcastScoreEvent: function(outcome, targetWord, clueOrTeamName, guesserName, points) {
     if (!P2PEngine.isConnected) return;
     let feedText = "";
-    if (outcome === "correct") {
-      feedText = `✓ <strong>${targetWord}</strong>: Guessed by ${guesserName} (+1 ${clueGiverName}, +1 ${guesserName})`;
-    } else if (outcome === "taboo") {
-      feedText = `🚨 <strong>${targetWord}</strong>: Taboo foul by ${clueGiverName} (${points} pts)`;
+    if (this.config.gameFormat === "ffa") {
+      if (outcome === "correct") {
+        feedText = `✓ <strong>${targetWord}</strong>: Guessed by ${guesserName} (+1 ${clueOrTeamName}, +1 ${guesserName})`;
+      } else if (outcome === "taboo") {
+        feedText = `🚨 <strong>${targetWord}</strong>: Taboo foul by ${clueOrTeamName} (${points} pts)`;
+      } else {
+        feedText = `↷ <strong>${targetWord}</strong>: Skipped by ${clueOrTeamName} (${points} pt)`;
+      }
     } else {
-      feedText = `↷ <strong>${targetWord}</strong>: Skipped by ${clueGiverName} (${points} pt)`;
+      if (outcome === "correct") {
+        feedText = `✓ <strong>${targetWord}</strong>: Correct (+1 pt to ${clueOrTeamName})`;
+      } else if (outcome === "taboo") {
+        feedText = `🚨 <strong>${targetWord}</strong>: Taboo foul (${points} pts to ${clueOrTeamName})`;
+      } else {
+        feedText = `↷ <strong>${targetWord}</strong>: Skipped (${points} pt)`;
+      }
     }
 
-    P2PEngine.send("FFA_WORD_SCORED", {
+    const payload = {
+      gameFormat: this.config.gameFormat,
       outcome: outcome,
       targetWord: targetWord,
       feedText: feedText,
-      clueGiverName: clueGiverName,
+      clueOrTeamName: clueOrTeamName,
       guesserName: guesserName,
       points: points,
       players: this.state.players,
+      teams: this.state.teams,
       timeLeft: this.state.timeLeft,
       isPaused: true
-    });
+    };
+
+    P2PEngine.send("WORD_SCORED", payload);
+    P2PEngine.send("FFA_WORD_SCORED", payload);
   },
 
   renderSpectatorScoreboard: function() {
@@ -878,38 +913,96 @@ const TabooApp = {
     if (!list) return;
     list.innerHTML = "";
 
-    const clueGiver = this.getCurrentClueGiver();
-    const monitor = this.getCurrentMonitor();
-
-    const sorted = [...this.state.players].sort((a, b) => b.score - a.score);
     const medals = ["🥇", "🥈", "🥉"];
 
-    sorted.forEach((p, idx) => {
-      const card = document.createElement("div");
-      card.className = "spectator-player-card";
-      if (p.id === clueGiver.id || p.id === monitor.id) {
-        card.classList.add("active-role");
+    if (this.config.gameFormat === "teams") {
+      const ffaRoles = document.getElementById("spectator-roles-ffa");
+      const teamsRoles = document.getElementById("spectator-roles-teams");
+      if (ffaRoles) ffaRoles.style.display = "none";
+      if (teamsRoles) teamsRoles.style.display = "flex";
+
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      const activeTeamName = document.getElementById("spectator-active-team-name");
+      if (activeTeamName && currentTeam) {
+        activeTeamName.textContent = currentTeam.name;
+        activeTeamName.style.color = currentTeam.color;
       }
 
-      let roleTag = "";
-      if (p.id === clueGiver.id) {
-        roleTag = `<span class="ffa-role-badge" style="color: #f97316; margin-left: 6px;">🗣️ Clue Giver</span>`;
-      } else if (p.id === monitor.id) {
-        roleTag = `<span class="ffa-role-badge" style="color: #ef4444; margin-left: 6px;">🚨 Monitor</span>`;
+      const roundBanner = document.getElementById("spectator-round-banner");
+      if (roundBanner) {
+        roundBanner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.currentTeamIdx + 1} of ${this.state.teams.length}`;
       }
 
-      const rankBadge = idx < 3 ? medals[idx] : `#${idx + 1}`;
+      const sorted = [...this.state.teams].sort((a, b) => b.score - a.score);
+      sorted.forEach((team, idx) => {
+        const card = document.createElement("div");
+        card.className = "spectator-player-card";
+        const isActive = currentTeam && (team.id === currentTeam.id || team.name === currentTeam.name);
+        if (isActive) {
+          card.classList.add("active-role");
+        }
 
-      card.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-          <span class="spectator-player-rank">${rankBadge}</span>
-          <span style="width: 12px; height: 12px; border-radius: 50%; background: ${p.color}; display: inline-block;"></span>
-          <span class="spectator-player-name">${p.name} ${roleTag}</span>
-        </div>
-        <span class="spectator-player-score">${p.score} pts</span>
-      `;
-      list.appendChild(card);
-    });
+        const rankBadge = idx < 3 ? medals[idx] : `#${idx + 1}`;
+        const activeTag = isActive ? `<span class="ffa-role-badge" style="color: #f97316; margin-left: 6px;">🗣️ Active Turn</span>` : "";
+
+        card.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+            <span class="spectator-player-rank">${rankBadge}</span>
+            <span style="width: 12px; height: 12px; border-radius: 50%; background: ${team.color}; display: inline-block;"></span>
+            <span class="spectator-player-name">${team.name} ${activeTag}</span>
+          </div>
+          <span class="spectator-player-score">${team.score} pts</span>
+        `;
+        list.appendChild(card);
+      });
+    } else {
+      // Free-For-All Mode
+      const ffaRoles = document.getElementById("spectator-roles-ffa");
+      const teamsRoles = document.getElementById("spectator-roles-teams");
+      if (ffaRoles) ffaRoles.style.display = "flex";
+      if (teamsRoles) teamsRoles.style.display = "none";
+
+      const clueGiver = this.getCurrentClueGiver();
+      const monitor = this.getCurrentMonitor();
+
+      const cgName = document.getElementById("spectator-cluegiver-name");
+      const monName = document.getElementById("spectator-monitor-name");
+      if (cgName && clueGiver) cgName.textContent = clueGiver.name;
+      if (monName && monitor) monName.textContent = monitor.name;
+
+      const roundBanner = document.getElementById("spectator-round-banner");
+      if (roundBanner) {
+        roundBanner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.ffaTurnIndex + 1}`;
+      }
+
+      const sorted = [...this.state.players].sort((a, b) => b.score - a.score);
+      sorted.forEach((p, idx) => {
+        const card = document.createElement("div");
+        card.className = "spectator-player-card";
+        if (clueGiver && monitor && (p.id === clueGiver.id || p.id === monitor.id)) {
+          card.classList.add("active-role");
+        }
+
+        let roleTag = "";
+        if (clueGiver && p.id === clueGiver.id) {
+          roleTag = `<span class="ffa-role-badge" style="color: #f97316; margin-left: 6px;">🗣️ Clue Giver</span>`;
+        } else if (monitor && p.id === monitor.id) {
+          roleTag = `<span class="ffa-role-badge" style="color: #ef4444; margin-left: 6px;">🚨 Monitor</span>`;
+        }
+
+        const rankBadge = idx < 3 ? medals[idx] : `#${idx + 1}`;
+
+        card.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+            <span class="spectator-player-rank">${rankBadge}</span>
+            <span style="width: 12px; height: 12px; border-radius: 50%; background: ${p.color}; display: inline-block;"></span>
+            <span class="spectator-player-name">${p.name} ${roleTag}</span>
+          </div>
+          <span class="spectator-player-score">${p.score} pts</span>
+        `;
+        list.appendChild(card);
+      });
+    }
   },
 
   updateSkipButtonLabel: function() {
@@ -1203,6 +1296,7 @@ const TabooApp = {
             item.hostVote = newStatus;
             item.peerVote = newStatus;
           }
+          this.recalculateScoresFromTurnCards();
           this.renderReviewCardsList();
           this.updateReviewScoreSummary();
           this.saveActiveSession();
@@ -1228,6 +1322,7 @@ const TabooApp = {
               item.guesserName = p.name;
             }
           }
+          this.recalculateScoresFromTurnCards();
           this.updateReviewScoreSummary();
         });
       }
@@ -1264,7 +1359,11 @@ const TabooApp = {
   confirmRoundScore: function() {
     AudioRecorder.pause();
 
+    this.recalculateScoresFromTurnCards();
+
     if (this.config.gameFormat === "ffa") {
+      this.state.players.forEach(p => p.baseScore = p.score);
+
       // Advance FFA turn rotation
       this.state.ffaTurnIndex++;
       if (this.state.ffaTurnIndex % this.state.players.length === 0) {
@@ -1307,8 +1406,7 @@ const TabooApp = {
 
     // Classic Team Mode
     const currentTeam = this.state.teams[this.state.currentTeamIdx];
-    const turnPoints = this.calculateCurrentTurnScore();
-    currentTeam.score += turnPoints;
+    this.state.teams.forEach(t => t.baseScore = t.score);
 
     // Check if target score reached (only if playing in Points Mode)
     if (!this.config.isFixedRounds && this.config.targetScore && currentTeam.score >= this.config.targetScore) {
@@ -1559,6 +1657,21 @@ const TabooApp = {
         if (teamsView) teamsView.style.display = "none";
         if (ffaDesc) ffaDesc.style.display = "block";
         if (teamsDesc) teamsDesc.style.display = "none";
+      }
+    } else {
+      const ffaPill = document.getElementById("format-pill-ffa");
+      const teamPill = document.getElementById("format-pill-teams");
+      if (ffaPill && teamPill) {
+        teamPill.classList.add("active");
+        ffaPill.classList.remove("active");
+        const ffaView = document.getElementById("setup-ffa-view");
+        const teamsView = document.getElementById("setup-teams-view");
+        const ffaDesc = document.getElementById("format-desc-ffa");
+        const teamsDesc = document.getElementById("format-desc-teams");
+        if (teamsView) teamsView.style.display = "block";
+        if (ffaView) ffaView.style.display = "none";
+        if (teamsDesc) teamsDesc.style.display = "block";
+        if (ffaDesc) ffaDesc.style.display = "none";
       }
     }
 
@@ -1814,17 +1927,9 @@ const TabooApp = {
       if (payload.isGameStarted) {
         this.state.currentTeamIdx = payload.currentTeamIdx || 0;
         this.state.roundNumber = payload.roundNumber || 1;
-        if (payload.currentScreen === "screen-game") {
-          if (this.config.gameFormat === "ffa") {
-            this.showScreen("screen-spectator");
-            this.renderSpectatorScoreboard();
-          } else if (payload.activeCard) {
-            this.activeCard = payload.activeCard;
-            this.state.timeLeft = payload.timeLeft || 60;
-            this.showScreen("screen-game");
-            this.renderCard(this.activeCard);
-            this.updateTurnScorePill();
-          }
+        if (payload.currentScreen === "screen-game" || payload.currentScreen === "screen-spectator") {
+          this.renderSpectatorScoreboard();
+          this.showScreen("screen-spectator");
         } else {
           this.showHandoffScreen();
         }
@@ -1849,43 +1954,23 @@ const TabooApp = {
     });
 
     P2PEngine.on("TURN_START", (payload) => {
-      if (payload.gameFormat === "ffa") {
-        this.config.gameFormat = "ffa";
-        if (payload.players) this.state.players = payload.players;
-        this.state.ffaTurnIndex = payload.ffaTurnIndex || 0;
-        this.state.roundNumber = payload.roundNumber || 1;
-        this.state.timeLeft = payload.timeLeft || 60;
-        this.state.turnCards = [];
-
-        const roundBanner = document.getElementById("spectator-round-banner");
-        if (roundBanner) roundBanner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.ffaTurnIndex + 1}`;
-
-        const cgName = document.getElementById("spectator-cluegiver-name");
-        const monName = document.getElementById("spectator-monitor-name");
-        if (cgName && payload.clueGiver) cgName.textContent = payload.clueGiver.name;
-        if (monName && payload.monitor) monName.textContent = payload.monitor.name;
-
-        const timerBadge = document.getElementById("spectator-timer-badge");
-        if (timerBadge) timerBadge.textContent = `⏱️ ${this.state.timeLeft}s`;
-
-        const pauseAlert = document.getElementById("spectator-pause-alert");
-        if (pauseAlert) pauseAlert.style.display = "none";
-
-        this.renderSpectatorScoreboard();
-        this.showScreen("screen-spectator");
-        return;
-      }
-
-      this.state.currentTeamIdx = payload.currentTeamIdx;
-      this.state.roundNumber = payload.roundNumber;
-      this.state.timeLeft = payload.timeLeft;
-      this.activeCard = payload.activeCard;
+      this.config.gameFormat = payload.gameFormat || this.config.gameFormat;
+      if (payload.teams) this.state.teams = payload.teams;
+      if (payload.players) this.state.players = payload.players;
+      this.state.currentTeamIdx = payload.currentTeamIdx !== undefined ? payload.currentTeamIdx : 0;
+      this.state.ffaTurnIndex = payload.ffaTurnIndex !== undefined ? payload.ffaTurnIndex : 0;
+      this.state.roundNumber = payload.roundNumber || 1;
+      this.state.timeLeft = payload.timeLeft || this.config.roundDuration || 60;
       this.state.turnCards = [];
-      this.showScreen("screen-game");
-      this.renderCard(this.activeCard);
-      this.updateTurnScorePill();
-      this.updateSkipButtonLabel();
-      this.updateTabooButtonLabel();
+
+      const timerBadge = document.getElementById("spectator-timer-badge");
+      if (timerBadge) timerBadge.textContent = `⏱️ ${this.state.timeLeft}s`;
+
+      const pauseAlert = document.getElementById("spectator-pause-alert");
+      if (pauseAlert) pauseAlert.style.display = "none";
+
+      this.renderSpectatorScoreboard();
+      this.showScreen("screen-spectator");
     });
 
     P2PEngine.on("CARD_DRAW", (payload) => {
@@ -1896,30 +1981,31 @@ const TabooApp = {
     P2PEngine.on("CARD_ACTION", (payload) => {
       if (payload.action === "taboo") {
         SoundEngine.playBuzzer();
-        this.showToast("🚨 Opponent buzzed TABOO!");
+        SoundEngine.vibrate([200, 100, 200]);
+        this.showToast("🚨 Opponent / Spectator buzzed TABOO!");
+        if (P2PEngine.role === "host") {
+          this.handleTaboo();
+        }
       } else if (payload.action === "correct") {
         SoundEngine.playCorrect();
       }
-
-      if (P2PEngine.role === "host") {
-        this.recordCardVote("peer", payload.action);
-      } else {
-        this.recordCardVote("host", payload.action);
-      }
     });
 
-    P2PEngine.on("FFA_WORD_SCORED", (payload) => {
+    const handleWordScoredOnSpectator = (payload) => {
       if (payload.players) this.state.players = payload.players;
+      if (payload.teams) this.state.teams = payload.teams;
+      if (payload.gameFormat) this.config.gameFormat = payload.gameFormat;
+
       if (payload.outcome === "correct") {
         SoundEngine.playCorrect();
       } else if (payload.outcome === "taboo") {
         SoundEngine.playBuzzer();
-      } else {
+      } else if (payload.outcome === "skip") {
         SoundEngine.playSkip();
       }
 
       const pauseAlert = document.getElementById("spectator-pause-alert");
-      if (pauseAlert) pauseAlert.style.display = "block";
+      if (pauseAlert) pauseAlert.style.display = payload.isPaused ? "block" : "none";
 
       const feedList = document.getElementById("spectator-feed-list");
       if (feedList) {
@@ -1930,9 +2016,12 @@ const TabooApp = {
       }
 
       this.renderSpectatorScoreboard();
-    });
+    };
 
-    P2PEngine.on("FFA_NEXT_WORD", (payload) => {
+    P2PEngine.on("WORD_SCORED", handleWordScoredOnSpectator);
+    P2PEngine.on("FFA_WORD_SCORED", handleWordScoredOnSpectator);
+
+    const handleNextWordOnSpectator = (payload) => {
       const pauseAlert = document.getElementById("spectator-pause-alert");
       if (pauseAlert) pauseAlert.style.display = "none";
       if (payload.timeLeft !== undefined) {
@@ -1940,7 +2029,10 @@ const TabooApp = {
         const badge = document.getElementById("spectator-timer-badge");
         if (badge) badge.textContent = `⏱️ ${this.state.timeLeft}s`;
       }
-    });
+    };
+
+    P2PEngine.on("NEXT_WORD", handleNextWordOnSpectator);
+    P2PEngine.on("FFA_NEXT_WORD", handleNextWordOnSpectator);
 
     P2PEngine.on("TIMER_SYNC", (payload) => {
       if (P2PEngine.role === "client") {
@@ -2517,6 +2609,7 @@ const TabooApp = {
         return;
       }
       this.renderTeamsSetupList();
+      this.renderPlayersSetupList();
       this.showScreen("screen-setup");
     });
     document.getElementById("btn-nav-rules")?.addEventListener("click", () => this.showModal("modal-rules"));
@@ -2557,12 +2650,19 @@ const TabooApp = {
 
     document.getElementById("btn-add-player")?.addEventListener("click", () => this.addPlayer());
 
-    // Free-For-All Gameplay In-Between Word Controls
+    // Gameplay In-Between Word Controls
     document.getElementById("btn-ffa-next-word")?.addEventListener("click", () => this.proceedToNextWord());
     document.getElementById("btn-ffa-cancel-score")?.addEventListener("click", () => this.selectGuesser("none"));
+    document.getElementById("btn-word-undo")?.addEventListener("click", () => this.undoLastCardScore());
 
     // Device 2 Spectator Taboo Buzzer
-    document.getElementById("btn-spectator-buzzer")?.addEventListener("click", () => this.handleTaboo());
+    document.getElementById("btn-spectator-buzzer")?.addEventListener("click", () => {
+      SoundEngine.playBuzzer();
+      SoundEngine.vibrate([200, 100, 200]);
+      if (P2PEngine.isConnected) {
+        P2PEngine.send("CARD_ACTION", { action: "taboo" });
+      }
+    });
 
     // Setup Screen Options
     document.getElementById("btn-add-team")?.addEventListener("click", () => this.addTeam());
@@ -2615,7 +2715,11 @@ const TabooApp = {
 
     // Victory Screen
     document.getElementById("btn-play-again-same")?.addEventListener("click", () => this.startNewGame());
-    document.getElementById("btn-rematch-setup")?.addEventListener("click", () => this.showScreen("screen-setup"));
+    document.getElementById("btn-rematch-setup")?.addEventListener("click", () => {
+      this.renderTeamsSetupList();
+      this.renderPlayersSetupList();
+      this.showScreen("screen-setup");
+    });
 
     // Modals Close
     document.querySelectorAll("[data-close-modal]").forEach(btn => {

@@ -491,11 +491,14 @@
               <div id="ffa-outcome-banner" class="ffa-outcome-banner">
                 <!-- e.g. "✓ Charlie guessed correctly! (+1 Alice, +1 Charlie)" -->
               </div>
-              <p class="text-xs text-slate-300 text-center mb-3">
-                Score updated on both devices. Tap below when ready for the next word:
+              <p id="ffa-outcome-subtext" class="text-xs text-slate-300 text-center mb-3">
+                Score updated! Tap below when ready for the next word:
               </p>
               <button id="btn-ffa-next-word" type="button" class="btn-primary w-full py-3.5 text-base" style="background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
                 <span>▶️ NEXT WORD (RESUME TIMER)</span>
+              </button>
+              <button id="btn-word-undo" type="button" class="btn-ghost text-xs text-slate-400 w-full mt-2" style="justify-content: center;">
+                ↩ Undo / Back to Card
               </button>
             </div>
 
@@ -518,8 +521,8 @@
             <h2 class="spectator-title">🌟 LIVE SCOREBOARD</h2>
           </div>
 
-          <!-- Current Turn Role Callout -->
-          <div class="spectator-roles-box">
+          <!-- Current Turn Role Callout: FFA Mode -->
+          <div id="spectator-roles-ffa" class="spectator-roles-box">
             <div class="spectator-role-item">
               <span class="spectator-role-tag">🗣️ CLUE GIVER</span>
               <span id="spectator-cluegiver-name" class="spectator-role-player">Alice</span>
@@ -529,6 +532,12 @@
               <span class="spectator-role-tag">🚨 MONITOR</span>
               <span id="spectator-monitor-name" class="spectator-role-player">Bob</span>
             </div>
+          </div>
+
+          <!-- Current Turn Role Callout: Team Mode -->
+          <div id="spectator-roles-teams" class="spectator-roles-box" style="display: none; justify-content: center; gap: 8px;">
+            <span class="spectator-role-tag" style="font-size: 0.85rem;">ACTIVE TURN:</span>
+            <span id="spectator-active-team-name" class="spectator-role-player" style="color: var(--team-orange); font-size: 1.15rem;">Team Orange</span>
           </div>
 
           <div id="spectator-pause-alert" class="spectator-pause-banner" style="display: none;">

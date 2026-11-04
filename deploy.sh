@@ -15,6 +15,9 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 cd "$DIR"
 
+# Ensure git commands succeed smoothly in all environments
+export GIT_CONFIG_GLOBAL=/dev/null
+
 echo "========================================="
 echo "🚀 Taboo Game - One-Click GitHub Deployer"
 echo "========================================="
