@@ -6,6 +6,7 @@
 const TabooApp = {
   // Global Game Configuration
   config: {
+    gameFormat: "teams", // "teams" | "ffa"
     roundDuration: 60,
     targetScore: 30,
     isFixedRounds: false,
@@ -26,6 +27,14 @@ const TabooApp = {
       { id: 1, name: "Team Orange 🍊", color: "var(--team-orange)", score: 0 },
       { id: 2, name: "Team Blue 🔷", color: "var(--team-blue)", score: 0 }
     ],
+    players: [
+      { id: 1, name: "Player 1", color: "#f97316", score: 0 },
+      { id: 2, name: "Player 2", color: "#3b82f6", score: 0 },
+      { id: 3, name: "Player 3", color: "#10b981", score: 0 },
+      { id: 4, name: "Player 4", color: "#8b5cf6", score: 0 }
+    ],
+    ffaTurnIndex: 0,
+    isWordScorePaused: false,
     currentTeamIdx: 0,
     roundNumber: 1,
     isGameOver: false,
@@ -43,12 +52,15 @@ const TabooApp = {
     currentCardVotes: { hostVote: null, peerVote: null }
   },
 
+  currentOfflineSignalCode: "",
+
   init: function() {
     SoundEngine.loadMuteState();
     this.loadSavedSettings();
     this.setupEventListeners();
     this.setupP2PListeners();
     this.renderCategoryChips();
+    this.renderPlayersSetupList();
     this.showScreen("screen-welcome");
     this.checkAndDisplayResumeBanner();
     ConfettiEngine.init();
@@ -90,6 +102,11 @@ const TabooApp = {
     const modal = document.getElementById(modalId);
     if (modal) {
       modal.classList.remove("active");
+    }
+    if (modalId === "modal-dual-device") {
+      P2PEngine.stopQRScanner();
+      const cam = document.getElementById("p2p-camera-container");
+      if (cam) cam.style.display = "none";
     }
   },
 
@@ -193,6 +210,89 @@ const TabooApp = {
     });
   },
 
+  renderPlayersSetupList: function() {
+    const container = document.getElementById("ffa-players-setup-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    this.state.players.forEach((player, idx) => {
+      const row = document.createElement("div");
+      row.className = "team-input-row";
+      row.innerHTML = `
+        <div class="team-color-indicator" style="background: ${player.color};"></div>
+        <input type="text" class="team-name-input" value="${player.name}" placeholder="Player Name">
+        ${this.state.players.length > 3 ? `<button type="button" class="btn-ghost text-red-400" data-remove-player-idx="${idx}">✕</button>` : ""}
+      `;
+
+      const input = row.querySelector(".team-name-input");
+      if (input) {
+        input.addEventListener("input", (e) => {
+          player.name = e.target.value.trim() || `Player ${idx + 1}`;
+          this.saveSettings();
+        });
+      }
+
+      const removeBtn = row.querySelector("[data-remove-player-idx]");
+      if (removeBtn) {
+        removeBtn.addEventListener("click", () => this.removePlayer(idx));
+      }
+
+      container.appendChild(row);
+    });
+  },
+
+  addPlayer: function() {
+    if (this.state.players.length >= 8) {
+      this.showToast("Maximum 8 players allowed!");
+      return;
+    }
+    const colors = ["#f97316", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#f59e0b", "#06b6d4", "#84cc16"];
+    const idx = this.state.players.length;
+    this.state.players.push({
+      id: Date.now() + idx,
+      name: `Player ${idx + 1}`,
+      color: colors[idx % colors.length],
+      score: 0
+    });
+    this.renderPlayersSetupList();
+    this.saveSettings();
+  },
+
+  removePlayer: function(idx) {
+    if (this.state.players.length <= 3) {
+      this.showToast("At least 3 players required for Free-For-All mode!");
+      return;
+    }
+    this.state.players.splice(idx, 1);
+    this.renderPlayersSetupList();
+    this.saveSettings();
+  },
+
+  getCurrentClueGiver: function() {
+    if (this.config.gameFormat === "ffa") {
+      const count = this.state.players.length;
+      return this.state.players[this.state.ffaTurnIndex % count];
+    }
+    return { name: this.state.teams[this.state.currentTeamIdx].name, color: this.state.teams[this.state.currentTeamIdx].color };
+  },
+
+  getCurrentMonitor: function() {
+    if (this.config.gameFormat === "ffa") {
+      const count = this.state.players.length;
+      return this.state.players[(this.state.ffaTurnIndex + 1) % count];
+    }
+    return { name: "Opponent", color: "var(--team-blue)" };
+  },
+
+  getCurrentGuessers: function() {
+    if (this.config.gameFormat === "ffa") {
+      const cg = this.getCurrentClueGiver();
+      const mon = this.getCurrentMonitor();
+      return this.state.players.filter(p => p.id !== cg.id && p.id !== mon.id);
+    }
+    return [];
+  },
+
   startNewGame: function() {
     this.clearActiveSession();
     AudioRecorder.clearAll();
@@ -200,7 +300,9 @@ const TabooApp = {
 
     // Reset match scores
     this.state.teams.forEach(t => t.score = 0);
+    this.state.players.forEach(p => p.score = 0);
     this.state.currentTeamIdx = 0;
+    this.state.ffaTurnIndex = 0;
     this.state.roundNumber = 1;
     this.state.isGameOver = false;
     this.state.winner = null;
@@ -210,7 +312,10 @@ const TabooApp = {
 
     if (P2PEngine.isConnected && P2PEngine.role === "host") {
       P2PEngine.send("MATCH_START", {
+        gameFormat: this.config.gameFormat,
         teams: this.state.teams,
+        players: this.state.players,
+        ffaTurnIndex: this.state.ffaTurnIndex,
         deck: this.state.deck,
         roundNumber: this.state.roundNumber,
         currentTeamIdx: this.state.currentTeamIdx,
@@ -250,35 +355,59 @@ const TabooApp = {
   // HANDOFF SCREEN (PASS & PLAY)
   // ==========================================
   showHandoffScreen: function() {
-    const currentTeam = this.state.teams[this.state.currentTeamIdx];
-    
-    // Update labels
     const banner = document.getElementById("handoff-round-banner");
-    if (banner) {
-      banner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.currentTeamIdx + 1} of ${this.state.teams.length}`;
-      banner.style.backgroundColor = currentTeam.color;
-    }
+    const teamsView = document.getElementById("handoff-view-teams");
+    const ffaView = document.getElementById("handoff-view-ffa");
 
-    const teamTitle = document.getElementById("handoff-team-title");
-    if (teamTitle) {
-      teamTitle.textContent = currentTeam.name;
-      teamTitle.style.color = currentTeam.color;
-    }
+    if (this.config.gameFormat === "ffa") {
+      if (banner) {
+        banner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.ffaTurnIndex + 1}`;
+        banner.style.background = "linear-gradient(135deg, #f97316, #ef4444)";
+      }
+      if (teamsView) teamsView.style.display = "none";
+      if (ffaView) ffaView.style.display = "block";
 
-    const scoreBadge = document.getElementById("handoff-team-score");
-    if (scoreBadge) {
-      scoreBadge.textContent = `Current Score: ${currentTeam.score} pts`;
-    }
+      const clueGiver = this.getCurrentClueGiver();
+      const monitor = this.getCurrentMonitor();
+      const guessers = this.getCurrentGuessers();
 
-    const desc = document.getElementById("handoff-prompt-desc");
-    if (desc) {
-      if (P2PEngine.isConnected) {
-        const isMyTurn = (this.state.currentTeamIdx === P2PEngine.myTeamIdx);
-        desc.textContent = isMyTurn 
-          ? `Your Team's Turn! You are giving clues on this phone. Opponents will watch on their phone!`
-          : `Opponent's Turn! Watch their phone and prepare your buzzer for any Taboo slips!`;
-      } else {
-        desc.textContent = `Hand the phone to ${currentTeam.name}'s Clue Giver. Opponents, prepare your buzzer!`;
+      const cgName = document.getElementById("handoff-ffa-cluegiver-name");
+      const monName = document.getElementById("handoff-ffa-monitor-name");
+      const gNames = document.getElementById("handoff-ffa-guessers-list");
+
+      if (cgName) cgName.textContent = clueGiver.name;
+      if (monName) monName.textContent = monitor.name;
+      if (gNames) gNames.textContent = guessers.map(g => g.name).join(", ");
+    } else {
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      if (banner) {
+        banner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.currentTeamIdx + 1} of ${this.state.teams.length}`;
+        banner.style.backgroundColor = currentTeam.color;
+      }
+      if (teamsView) teamsView.style.display = "block";
+      if (ffaView) ffaView.style.display = "none";
+
+      const teamTitle = document.getElementById("handoff-team-title");
+      if (teamTitle) {
+        teamTitle.textContent = currentTeam.name;
+        teamTitle.style.color = currentTeam.color;
+      }
+
+      const scoreBadge = document.getElementById("handoff-team-score");
+      if (scoreBadge) {
+        scoreBadge.textContent = `Current Score: ${currentTeam.score} pts`;
+      }
+
+      const desc = document.getElementById("handoff-prompt-desc");
+      if (desc) {
+        if (P2PEngine.isConnected) {
+          const isMyTurn = (this.state.currentTeamIdx === P2PEngine.myTeamIdx);
+          desc.textContent = isMyTurn 
+            ? `Your Team's Turn! You are giving clues on this phone. Opponents will watch on their phone!`
+            : `Opponent's Turn! Watch their phone and prepare your buzzer for any Taboo slips!`;
+        } else {
+          desc.textContent = `Hand the phone to ${currentTeam.name}'s Clue Giver. Opponents, prepare your buzzer!`;
+        }
       }
     }
 
@@ -316,9 +445,9 @@ const TabooApp = {
   // ACTIVE TURN GAMEPLAY
   // ==========================================
   startTurn: function() {
-    const currentTeam = this.state.teams[this.state.currentTeamIdx];
     this.state.timeLeft = this.config.roundDuration;
     this.state.isPaused = false;
+    this.state.isWordScorePaused = false;
     this.state.skipsUsedThisTurn = 0;
     this.state.turnCards = [];
     this.state.currentCardVotes = { hostVote: null, peerVote: null };
@@ -326,10 +455,22 @@ const TabooApp = {
 
     // Header info
     const teamDot = document.getElementById("active-team-dot");
-    if (teamDot) teamDot.style.backgroundColor = currentTeam.color;
-
     const teamName = document.getElementById("active-team-name");
-    if (teamName) teamName.textContent = currentTeam.name;
+
+    if (this.config.gameFormat === "ffa") {
+      const clueGiver = this.getCurrentClueGiver();
+      const monitor = this.getCurrentMonitor();
+      if (teamDot) teamDot.style.backgroundColor = clueGiver.color;
+      if (teamName) teamName.textContent = `🗣️ ${clueGiver.name} (Clue Giver) | 🚨 ${monitor.name} (Monitor)`;
+    } else {
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      if (teamDot) teamDot.style.backgroundColor = currentTeam.color;
+      if (teamName) teamName.textContent = currentTeam.name;
+    }
+
+    // Hide FFA scoring modal
+    const ffaModal = document.getElementById("ffa-scoring-modal");
+    if (ffaModal) ffaModal.style.display = "none";
 
     this.updateTurnScorePill();
     this.updateSkipButtonLabel();
@@ -356,7 +497,13 @@ const TabooApp = {
 
     if (P2PEngine.isConnected && P2PEngine.role === "host") {
       P2PEngine.send("TURN_START", {
+        gameFormat: this.config.gameFormat,
         currentTeamIdx: this.state.currentTeamIdx,
+        ffaTurnIndex: this.state.ffaTurnIndex,
+        players: this.state.players,
+        clueGiver: this.getCurrentClueGiver(),
+        monitor: this.getCurrentMonitor(),
+        guessers: this.getCurrentGuessers(),
         roundNumber: this.state.roundNumber,
         timeLeft: this.state.timeLeft,
         activeCard: this.activeCard
@@ -409,7 +556,12 @@ const TabooApp = {
   },
 
   handleCorrect: function() {
-    if (this.state.isPaused || !this.activeCard) return;
+    if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
+
+    if (this.config.gameFormat === "ffa") {
+      this.pauseWordForScoring("correct");
+      return;
+    }
 
     SoundEngine.playCorrect();
 
@@ -447,7 +599,12 @@ const TabooApp = {
   },
 
   handleTaboo: function() {
-    if (this.state.isPaused || !this.activeCard) return;
+    if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
+
+    if (this.config.gameFormat === "ffa") {
+      this.pauseWordForScoring("taboo");
+      return;
+    }
 
     SoundEngine.playBuzzer();
 
@@ -485,11 +642,16 @@ const TabooApp = {
   },
 
   handleSkip: function() {
-    if (this.state.isPaused || !this.activeCard) return;
+    if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
 
     if (this.config.skipLimit > 0 && this.state.skipsUsedThisTurn >= this.config.skipLimit) {
       this.showToast(`Skip limit reached (${this.config.skipLimit} max)!`);
       SoundEngine.vibrate([100]);
+      return;
+    }
+
+    if (this.config.gameFormat === "ffa") {
+      this.pauseWordForScoring("skip");
       return;
     }
 
@@ -529,6 +691,225 @@ const TabooApp = {
     }
 
     this.updateTurnScorePill();
+  },
+
+  // ==========================================
+  // FREE-FOR-ALL (INDIVIDUAL) WORD SCORING & PAUSE
+  // ==========================================
+  pauseWordForScoring: function(status) {
+    if (this.state.isPaused || !this.activeCard) return;
+
+    this.state.isWordScorePaused = true;
+    const clueGiver = this.getCurrentClueGiver();
+
+    // Broadcast pause state to Device 2
+    if (P2PEngine.isConnected) {
+      P2PEngine.send("TIMER_SYNC", { timeLeft: this.state.timeLeft, isPaused: true });
+    }
+
+    const modal = document.getElementById("ffa-scoring-modal");
+    const stepGuesser = document.getElementById("ffa-step-select-guesser");
+    const stepNext = document.getElementById("ffa-step-next-word");
+    const grid = document.getElementById("ffa-guessers-btn-grid");
+    const banner = document.getElementById("ffa-outcome-banner");
+
+    if (modal) modal.style.display = "flex";
+
+    if (status === "correct") {
+      SoundEngine.playCorrect();
+      if (stepGuesser) stepGuesser.style.display = "block";
+      if (stepNext) stepNext.style.display = "none";
+
+      if (grid) {
+        grid.innerHTML = "";
+        const guessers = this.getCurrentGuessers();
+        guessers.forEach(p => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ffa-guesser-btn";
+          btn.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block;"></span> <span>${p.name}</span>`;
+          btn.addEventListener("click", () => this.selectGuesser(p.id));
+          grid.appendChild(btn);
+        });
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "ffa-guesser-btn";
+        cancelBtn.style.opacity = "0.75";
+        cancelBtn.style.borderColor = "rgba(255,255,255,0.2)";
+        cancelBtn.innerHTML = `<span>✕ Cancel / Nobody</span>`;
+        cancelBtn.addEventListener("click", () => this.selectGuesser("none"));
+        grid.appendChild(cancelBtn);
+      }
+    } else if (status === "taboo") {
+      SoundEngine.playBuzzer();
+      const penalty = this.config.tabooPenalty;
+      clueGiver.score += penalty;
+
+      this.state.turnCards.push({
+        card: this.activeCard,
+        status: "taboo",
+        originalStatus: "taboo",
+        clueGiverId: clueGiver.id,
+        clueGiverName: clueGiver.name
+      });
+
+      if (stepGuesser) stepGuesser.style.display = "none";
+      if (stepNext) stepNext.style.display = "block";
+      if (banner) {
+        banner.className = "ffa-outcome-banner ffa-outcome-taboo";
+        banner.textContent = `🚨 Taboo violation by ${clueGiver.name}! (${penalty} pts)`;
+      }
+
+      this.updateTurnScorePill();
+      this.broadcastFFAEvent("taboo", this.activeCard.word, clueGiver.name, null, penalty);
+    } else if (status === "skip") {
+      this.state.skipsUsedThisTurn++;
+      SoundEngine.playSkip();
+      const penalty = this.config.skipPenalty;
+      clueGiver.score += penalty;
+
+      this.state.turnCards.push({
+        card: this.activeCard,
+        status: "skip",
+        originalStatus: "skip",
+        clueGiverId: clueGiver.id,
+        clueGiverName: clueGiver.name
+      });
+
+      if (stepGuesser) stepGuesser.style.display = "none";
+      if (stepNext) stepNext.style.display = "block";
+      if (banner) {
+        banner.className = "ffa-outcome-banner ffa-outcome-skip";
+        banner.textContent = `↷ Skipped by ${clueGiver.name} (${penalty} pt)`;
+      }
+
+      this.updateSkipButtonLabel();
+      this.updateTurnScorePill();
+      this.broadcastFFAEvent("skip", this.activeCard.word, clueGiver.name, null, penalty);
+    }
+  },
+
+  selectGuesser: function(guesserId) {
+    if (guesserId === "none") {
+      this.state.isWordScorePaused = false;
+      const modal = document.getElementById("ffa-scoring-modal");
+      if (modal) modal.style.display = "none";
+      if (P2PEngine.isConnected) {
+        P2PEngine.send("TIMER_SYNC", { timeLeft: this.state.timeLeft, isPaused: false });
+      }
+      return;
+    }
+
+    const clueGiver = this.getCurrentClueGiver();
+    const guesser = this.state.players.find(p => p.id === guesserId);
+    if (!guesser) return;
+
+    // Both Clue Giver AND Guesser receive +1 point!
+    clueGiver.score += 1;
+    guesser.score += 1;
+
+    this.state.turnCards.push({
+      card: this.activeCard,
+      status: "correct",
+      originalStatus: "correct",
+      clueGiverId: clueGiver.id,
+      clueGiverName: clueGiver.name,
+      guesserId: guesser.id,
+      guesserName: guesser.name
+    });
+
+    const stepGuesser = document.getElementById("ffa-step-select-guesser");
+    const stepNext = document.getElementById("ffa-step-next-word");
+    const banner = document.getElementById("ffa-outcome-banner");
+
+    if (stepGuesser) stepGuesser.style.display = "none";
+    if (stepNext) stepNext.style.display = "block";
+    if (banner) {
+      banner.className = "ffa-outcome-banner ffa-outcome-correct";
+      banner.textContent = `✓ ${guesser.name} guessed correctly! (+1 ${clueGiver.name}, +1 ${guesser.name})`;
+    }
+
+    this.updateTurnScorePill();
+    this.broadcastFFAEvent("correct", this.activeCard.word, clueGiver.name, guesser.name, 1);
+  },
+
+  proceedToNextWord: function() {
+    const modal = document.getElementById("ffa-scoring-modal");
+    if (modal) modal.style.display = "none";
+
+    this.state.isWordScorePaused = false;
+    this.displayNextCard();
+
+    if (P2PEngine.isConnected) {
+      P2PEngine.send("FFA_NEXT_WORD", {
+        isPaused: false,
+        timeLeft: this.state.timeLeft
+      });
+    }
+  },
+
+  broadcastFFAEvent: function(outcome, targetWord, clueGiverName, guesserName, points) {
+    if (!P2PEngine.isConnected) return;
+    let feedText = "";
+    if (outcome === "correct") {
+      feedText = `✓ <strong>${targetWord}</strong>: Guessed by ${guesserName} (+1 ${clueGiverName}, +1 ${guesserName})`;
+    } else if (outcome === "taboo") {
+      feedText = `🚨 <strong>${targetWord}</strong>: Taboo foul by ${clueGiverName} (${points} pts)`;
+    } else {
+      feedText = `↷ <strong>${targetWord}</strong>: Skipped by ${clueGiverName} (${points} pt)`;
+    }
+
+    P2PEngine.send("FFA_WORD_SCORED", {
+      outcome: outcome,
+      targetWord: targetWord,
+      feedText: feedText,
+      clueGiverName: clueGiverName,
+      guesserName: guesserName,
+      points: points,
+      players: this.state.players,
+      timeLeft: this.state.timeLeft,
+      isPaused: true
+    });
+  },
+
+  renderSpectatorScoreboard: function() {
+    const list = document.getElementById("spectator-leaderboard-list");
+    if (!list) return;
+    list.innerHTML = "";
+
+    const clueGiver = this.getCurrentClueGiver();
+    const monitor = this.getCurrentMonitor();
+
+    const sorted = [...this.state.players].sort((a, b) => b.score - a.score);
+    const medals = ["🥇", "🥈", "🥉"];
+
+    sorted.forEach((p, idx) => {
+      const card = document.createElement("div");
+      card.className = "spectator-player-card";
+      if (p.id === clueGiver.id || p.id === monitor.id) {
+        card.classList.add("active-role");
+      }
+
+      let roleTag = "";
+      if (p.id === clueGiver.id) {
+        roleTag = `<span class="ffa-role-badge" style="color: #f97316; margin-left: 6px;">🗣️ Clue Giver</span>`;
+      } else if (p.id === monitor.id) {
+        roleTag = `<span class="ffa-role-badge" style="color: #ef4444; margin-left: 6px;">🚨 Monitor</span>`;
+      }
+
+      const rankBadge = idx < 3 ? medals[idx] : `#${idx + 1}`;
+
+      card.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+          <span class="spectator-player-rank">${rankBadge}</span>
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: ${p.color}; display: inline-block;"></span>
+          <span class="spectator-player-name">${p.name} ${roleTag}</span>
+        </div>
+        <span class="spectator-player-score">${p.score} pts</span>
+      `;
+      list.appendChild(card);
+    });
   },
 
   updateSkipButtonLabel: function() {
@@ -583,14 +964,14 @@ const TabooApp = {
     this.updateTimerDisplay(circle, textEl, circumference);
 
     this.state.timerId = setInterval(() => {
-      if (this.state.isPaused) return;
+      if (this.state.isPaused || this.state.isWordScorePaused) return;
 
       this.state.timeLeft--;
       this.updateTimerDisplay(circle, textEl, circumference);
       this.saveActiveSession();
 
       if (P2PEngine.isConnected && P2PEngine.role === "host") {
-        P2PEngine.send("TIMER_SYNC", { timeLeft: this.state.timeLeft });
+        P2PEngine.send("TIMER_SYNC", { timeLeft: this.state.timeLeft, isPaused: false });
       }
 
       // Audio warnings
@@ -680,11 +1061,17 @@ const TabooApp = {
   // REVIEW & DISPUTE ROOM SCREEN
   // ==========================================
   showReviewScreen: function() {
-    const currentTeam = this.state.teams[this.state.currentTeamIdx];
     const headerTitle = document.getElementById("review-team-header");
     if (headerTitle) {
-      headerTitle.textContent = `${currentTeam.name}'s Round Review`;
-      headerTitle.style.color = currentTeam.color;
+      if (this.config.gameFormat === "ffa") {
+        const clueGiver = this.getCurrentClueGiver();
+        headerTitle.textContent = `${clueGiver.name}'s Clue Turn Review`;
+        headerTitle.style.color = clueGiver.color;
+      } else {
+        const currentTeam = this.state.teams[this.state.currentTeamIdx];
+        headerTitle.textContent = `${currentTeam.name}'s Round Review`;
+        headerTitle.style.color = currentTeam.color;
+      }
     }
 
     // Configure Audio Review Player
@@ -779,6 +1166,19 @@ const TabooApp = {
         }
       }
 
+      let ffaGuesserHtml = "";
+      if (this.config.gameFormat === "ffa" && item.status === "correct") {
+        ffaGuesserHtml = `
+          <div class="flex items-center gap-2 mt-1" style="display: flex; align-items: center; gap: 6px;">
+            <span class="text-xs text-slate-300 font-semibold">Guessed by:</span>
+            <select class="review-guesser-select font-bold text-xs" data-card-idx="${idx}" style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.2); color: #34d399; border-radius: 6px; padding: 2px 6px;">
+              ${this.state.players.map(p => `<option value="${p.id}" ${p.id === item.guesserId ? 'selected' : ''}>${p.name}</option>`).join("")}
+              <option value="none" ${!item.guesserId ? 'selected' : ''}>Nobody / Void</option>
+            </select>
+          </div>
+        `;
+      }
+
       const row = document.createElement("div");
       row.className = `review-item ${isDisputed ? 'disputed' : ''}`;
       row.innerHTML = `
@@ -786,6 +1186,7 @@ const TabooApp = {
           <span class="review-item-word">${item.card.word}</span>
           <span class="review-item-cat">${item.card.category || "General"}</span>
           ${voteBadgeHtml}
+          ${ffaGuesserHtml}
         </div>
         <div class="review-toggle-buttons">
           <button type="button" class="review-toggle-btn ${item.status === 'correct' ? 'active-correct' : ''}" data-status="correct">✓ +1</button>
@@ -811,6 +1212,25 @@ const TabooApp = {
           }
         });
       });
+
+      const select = row.querySelector(".review-guesser-select");
+      if (select) {
+        select.addEventListener("change", (e) => {
+          const val = e.target.value;
+          if (val === "none") {
+            item.guesserId = null;
+            item.guesserName = null;
+          } else {
+            const numId = parseInt(val, 10) || val;
+            const p = this.state.players.find(pl => String(pl.id) === String(numId));
+            if (p) {
+              item.guesserId = p.id;
+              item.guesserName = p.name;
+            }
+          }
+          this.updateReviewScoreSummary();
+        });
+      }
 
       container.appendChild(row);
     });
@@ -842,11 +1262,53 @@ const TabooApp = {
   },
 
   confirmRoundScore: function() {
+    AudioRecorder.pause();
+
+    if (this.config.gameFormat === "ffa") {
+      // Advance FFA turn rotation
+      this.state.ffaTurnIndex++;
+      if (this.state.ffaTurnIndex % this.state.players.length === 0) {
+        this.state.roundNumber++;
+      }
+
+      // Check win condition
+      if (this.config.isFixedRounds && this.state.roundNumber > this.config.maxRounds) {
+        let winner = this.state.players[0];
+        this.state.players.forEach(p => {
+          if (p.score > winner.score) winner = p;
+        });
+        this.triggerVictory(winner);
+        return;
+      } else if (!this.config.isFixedRounds && this.config.targetScore) {
+        let highestScorer = null;
+        for (const p of this.state.players) {
+          if (p.score >= this.config.targetScore) {
+            if (!highestScorer || p.score > highestScorer.score) highestScorer = p;
+          }
+        }
+        if (highestScorer) {
+          this.triggerVictory(highestScorer);
+          return;
+        }
+      }
+
+      if (P2PEngine.isConnected && P2PEngine.role === "host") {
+        P2PEngine.send("CONFIRM_SCORE", {
+          gameFormat: "ffa",
+          players: this.state.players,
+          ffaTurnIndex: this.state.ffaTurnIndex,
+          roundNumber: this.state.roundNumber
+        });
+      }
+
+      this.showHandoffScreen();
+      return;
+    }
+
+    // Classic Team Mode
     const currentTeam = this.state.teams[this.state.currentTeamIdx];
     const turnPoints = this.calculateCurrentTurnScore();
     currentTeam.score += turnPoints;
-
-    AudioRecorder.pause();
 
     // Check if target score reached (only if playing in Points Mode)
     if (!this.config.isFixedRounds && this.config.targetScore && currentTeam.score >= this.config.targetScore) {
@@ -862,7 +1324,6 @@ const TabooApp = {
 
       // If playing in fixed rounds mode, check if game over
       if (this.config.isFixedRounds && this.state.roundNumber > this.config.maxRounds) {
-        // Find highest scoring team
         let winner = this.state.teams[0];
         this.state.teams.forEach(t => {
           if (t.score > winner.score) winner = t;
@@ -874,6 +1335,7 @@ const TabooApp = {
 
     if (P2PEngine.isConnected && P2PEngine.role === "host") {
       P2PEngine.send("CONFIRM_SCORE", {
+        gameFormat: "teams",
         teams: this.state.teams,
         currentTeamIdx: this.state.currentTeamIdx,
         roundNumber: this.state.roundNumber
@@ -886,31 +1348,35 @@ const TabooApp = {
   // ==========================================
   // VICTORY SCREEN
   // ==========================================
-  triggerVictory: function(winningTeam) {
+  triggerVictory: function(winningTarget) {
     this.state.isGameOver = true;
-    this.state.winner = winningTeam;
+    this.state.winner = winningTarget;
     this.clearActiveSession();
     AudioRecorder.clearAll();
 
     const winnerCallout = document.getElementById("victory-winner-team");
     if (winnerCallout) {
-      winnerCallout.textContent = `${winningTeam.name} WINS!`;
-      winnerCallout.style.color = winningTeam.color;
+      winnerCallout.textContent = `${winningTarget.name} WINS! (${winningTarget.score} pts)`;
+      winnerCallout.style.color = winningTarget.color;
     }
 
     const scoreboard = document.getElementById("victory-scoreboard");
     if (scoreboard) {
       scoreboard.innerHTML = "";
-      const sorted = [...this.state.teams].sort((a, b) => b.score - a.score);
-      sorted.forEach((t, rank) => {
+      const list = (this.config.gameFormat === "ffa") ? this.state.players : this.state.teams;
+      const sorted = [...list].sort((a, b) => b.score - a.score);
+      const medals = ["🥇", "🥈", "🥉"];
+
+      sorted.forEach((item, rank) => {
         const row = document.createElement("div");
-        row.className = `final-score-row ${t.id === winningTeam.id ? 'winner' : ''}`;
+        row.className = `final-score-row ${item.id === winningTarget.id ? 'winner' : ''}`;
+        const rankBadge = rank < 3 ? medals[rank] : `#${rank + 1}`;
         row.innerHTML = `
           <div class="flex items-center gap-3">
-            <span class="font-bold text-slate-400">#${rank + 1}</span>
-            <span class="final-team-name" style="color: ${t.color}">${t.name}</span>
+            <span class="font-bold text-slate-400" style="width: 24px;">${rankBadge}</span>
+            <span class="final-team-name" style="color: ${item.color}">${item.name}</span>
           </div>
-          <span class="final-team-points">${t.score} pts</span>
+          <span class="final-team-points">${item.score} pts</span>
         `;
         scoreboard.appendChild(row);
       });
@@ -1078,6 +1544,34 @@ const TabooApp = {
     const muteIcon = document.getElementById("mute-icon");
     if (muteIcon) muteIcon.textContent = SoundEngine.isMuted ? "🔇" : "🔊";
 
+    // Update game format toggle (teams vs ffa)
+    if (this.config.gameFormat === "ffa") {
+      const ffaPill = document.getElementById("format-pill-ffa");
+      const teamPill = document.getElementById("format-pill-teams");
+      if (ffaPill && teamPill) {
+        ffaPill.classList.add("active");
+        teamPill.classList.remove("active");
+        const ffaView = document.getElementById("setup-ffa-view");
+        const teamsView = document.getElementById("setup-teams-view");
+        const ffaDesc = document.getElementById("format-desc-ffa");
+        const teamsDesc = document.getElementById("format-desc-teams");
+        if (ffaView) ffaView.style.display = "block";
+        if (teamsView) teamsView.style.display = "none";
+        if (ffaDesc) ffaDesc.style.display = "block";
+        if (teamsDesc) teamsDesc.style.display = "none";
+      }
+    }
+
+    try {
+      const savedPlayers = localStorage.getItem("taboo_game_players");
+      if (savedPlayers) {
+        const parsed = JSON.parse(savedPlayers);
+        if (Array.isArray(parsed) && parsed.length >= 3) {
+          this.state.players = parsed;
+        }
+      }
+    } catch (e) {}
+
     this.updateSkipButtonLabel();
     this.updateTabooButtonLabel();
   },
@@ -1085,6 +1579,7 @@ const TabooApp = {
   saveSettings: function() {
     try {
       localStorage.setItem("taboo_game_config", JSON.stringify(this.config));
+      localStorage.setItem("taboo_game_players", JSON.stringify(this.state.players));
     } catch (e) {}
   },
 
@@ -1285,8 +1780,7 @@ const TabooApp = {
   setupP2PListeners: function() {
     P2PEngine.on("CLIENT_HELLO", (payload) => {
       this.showToast("📱 Team 2 connected from second phone!");
-      const startHostBtn = document.getElementById("btn-p2p-host-start");
-      if (startHostBtn) startHostBtn.style.display = "block";
+      P2PEngine.setHostStartButtonsVisible(true);
 
       const currentScreen = document.querySelector(".screen.active")?.id;
       const isGameActive = this.state.deck.length > 0 && !this.state.isGameOver;
@@ -1294,7 +1788,10 @@ const TabooApp = {
       P2PEngine.send("MATCH_CONFIG", {
         config: this.config,
         teams: this.state.teams,
-        isGameStarted: isGameActive && (currentScreen === "screen-game" || currentScreen === "screen-handoff"),
+        players: this.state.players,
+        gameFormat: this.config.gameFormat,
+        ffaTurnIndex: this.state.ffaTurnIndex,
+        isGameStarted: isGameActive && (currentScreen === "screen-game" || currentScreen === "screen-handoff" || currentScreen === "screen-spectator"),
         currentScreen: currentScreen,
         activeCard: this.activeCard,
         timeLeft: this.state.timeLeft,
@@ -1306,21 +1803,28 @@ const TabooApp = {
     P2PEngine.on("MATCH_CONFIG", (payload) => {
       if (payload.config) Object.assign(this.config, payload.config);
       if (payload.teams) this.state.teams = payload.teams;
+      if (payload.players) this.state.players = payload.players;
+      if (payload.ffaTurnIndex !== undefined) this.state.ffaTurnIndex = payload.ffaTurnIndex;
       this.updateSkipButtonLabel();
       this.updateTabooButtonLabel();
-      this.showToast("Connected to Team 1's match!");
+      this.showToast("Connected to match!");
 
       this.closeModal("modal-dual-device");
 
       if (payload.isGameStarted) {
         this.state.currentTeamIdx = payload.currentTeamIdx || 0;
         this.state.roundNumber = payload.roundNumber || 1;
-        if (payload.currentScreen === "screen-game" && payload.activeCard) {
-          this.activeCard = payload.activeCard;
-          this.state.timeLeft = payload.timeLeft || 60;
-          this.showScreen("screen-game");
-          this.renderCard(this.activeCard);
-          this.updateTurnScorePill();
+        if (payload.currentScreen === "screen-game") {
+          if (this.config.gameFormat === "ffa") {
+            this.showScreen("screen-spectator");
+            this.renderSpectatorScoreboard();
+          } else if (payload.activeCard) {
+            this.activeCard = payload.activeCard;
+            this.state.timeLeft = payload.timeLeft || 60;
+            this.showScreen("screen-game");
+            this.renderCard(this.activeCard);
+            this.updateTurnScorePill();
+          }
         } else {
           this.showHandoffScreen();
         }
@@ -1333,7 +1837,9 @@ const TabooApp = {
     P2PEngine.on("MATCH_START", (payload) => {
       this.closeModal("modal-dual-device");
       if (payload.config) Object.assign(this.config, payload.config);
-      this.state.teams = payload.teams;
+      if (payload.teams) this.state.teams = payload.teams;
+      if (payload.players) this.state.players = payload.players;
+      if (payload.ffaTurnIndex !== undefined) this.state.ffaTurnIndex = payload.ffaTurnIndex;
       this.state.deck = payload.deck;
       this.state.roundNumber = payload.roundNumber || 1;
       this.state.currentTeamIdx = payload.currentTeamIdx || 0;
@@ -1343,6 +1849,33 @@ const TabooApp = {
     });
 
     P2PEngine.on("TURN_START", (payload) => {
+      if (payload.gameFormat === "ffa") {
+        this.config.gameFormat = "ffa";
+        if (payload.players) this.state.players = payload.players;
+        this.state.ffaTurnIndex = payload.ffaTurnIndex || 0;
+        this.state.roundNumber = payload.roundNumber || 1;
+        this.state.timeLeft = payload.timeLeft || 60;
+        this.state.turnCards = [];
+
+        const roundBanner = document.getElementById("spectator-round-banner");
+        if (roundBanner) roundBanner.textContent = `Round ${this.state.roundNumber} • Turn ${this.state.ffaTurnIndex + 1}`;
+
+        const cgName = document.getElementById("spectator-cluegiver-name");
+        const monName = document.getElementById("spectator-monitor-name");
+        if (cgName && payload.clueGiver) cgName.textContent = payload.clueGiver.name;
+        if (monName && payload.monitor) monName.textContent = payload.monitor.name;
+
+        const timerBadge = document.getElementById("spectator-timer-badge");
+        if (timerBadge) timerBadge.textContent = `⏱️ ${this.state.timeLeft}s`;
+
+        const pauseAlert = document.getElementById("spectator-pause-alert");
+        if (pauseAlert) pauseAlert.style.display = "none";
+
+        this.renderSpectatorScoreboard();
+        this.showScreen("screen-spectator");
+        return;
+      }
+
       this.state.currentTeamIdx = payload.currentTeamIdx;
       this.state.roundNumber = payload.roundNumber;
       this.state.timeLeft = payload.timeLeft;
@@ -1375,6 +1908,40 @@ const TabooApp = {
       }
     });
 
+    P2PEngine.on("FFA_WORD_SCORED", (payload) => {
+      if (payload.players) this.state.players = payload.players;
+      if (payload.outcome === "correct") {
+        SoundEngine.playCorrect();
+      } else if (payload.outcome === "taboo") {
+        SoundEngine.playBuzzer();
+      } else {
+        SoundEngine.playSkip();
+      }
+
+      const pauseAlert = document.getElementById("spectator-pause-alert");
+      if (pauseAlert) pauseAlert.style.display = "block";
+
+      const feedList = document.getElementById("spectator-feed-list");
+      if (feedList) {
+        const item = document.createElement("div");
+        item.className = `spectator-feed-item feed-${payload.outcome}`;
+        item.innerHTML = payload.feedText || `Outcome: ${payload.outcome}`;
+        feedList.insertBefore(item, feedList.firstChild);
+      }
+
+      this.renderSpectatorScoreboard();
+    });
+
+    P2PEngine.on("FFA_NEXT_WORD", (payload) => {
+      const pauseAlert = document.getElementById("spectator-pause-alert");
+      if (pauseAlert) pauseAlert.style.display = "none";
+      if (payload.timeLeft !== undefined) {
+        this.state.timeLeft = payload.timeLeft;
+        const badge = document.getElementById("spectator-timer-badge");
+        if (badge) badge.textContent = `⏱️ ${this.state.timeLeft}s`;
+      }
+    });
+
     P2PEngine.on("TIMER_SYNC", (payload) => {
       if (P2PEngine.role === "client") {
         this.state.timeLeft = payload.timeLeft;
@@ -1382,6 +1949,16 @@ const TabooApp = {
         const textEl = document.getElementById("timer-display-text");
         const circumference = 2 * Math.PI * 30;
         this.updateTimerDisplay(circle, textEl, circumference);
+
+        // Update Spectator on Device 2
+        const timerBadge = document.getElementById("spectator-timer-badge");
+        if (timerBadge) {
+          timerBadge.textContent = `⏱️ ${this.state.timeLeft}s ${payload.isPaused ? "(PAUSED)" : ""}`;
+        }
+        const pauseAlert = document.getElementById("spectator-pause-alert");
+        if (pauseAlert) {
+          pauseAlert.style.display = payload.isPaused ? "block" : "none";
+        }
       }
     });
 
@@ -1400,6 +1977,13 @@ const TabooApp = {
     });
 
     P2PEngine.on("CONFIRM_SCORE", (payload) => {
+      if (payload.gameFormat === "ffa") {
+        if (payload.players) this.state.players = payload.players;
+        this.state.ffaTurnIndex = payload.ffaTurnIndex || 0;
+        this.state.roundNumber = payload.roundNumber || 1;
+        this.showHandoffScreen();
+        return;
+      }
       this.state.teams = payload.teams;
       this.state.currentTeamIdx = payload.currentTeamIdx;
       this.state.roundNumber = payload.roundNumber;
@@ -1443,6 +2027,43 @@ const TabooApp = {
       console.warn("Host init error:", err);
       P2PEngine.updateConnectionStatus("Signaling unavailable. Re-attempting...", "disconnected");
     });
+  },
+
+  initOfflineHostView: async function() {
+    const qrContainer = document.getElementById("p2p-offline-offer-qr");
+    const statusEl = document.getElementById("p2p-offline-status");
+    if (statusEl) {
+      statusEl.textContent = "Generating Host Offer QR...";
+      statusEl.className = "p2p-status-pill p2p-status-waiting";
+    }
+
+    try {
+      const offerCode = await P2PEngine.createOfflineOffer();
+      this.currentOfflineSignalCode = offerCode;
+
+      if (qrContainer && typeof QRCode !== "undefined") {
+        qrContainer.innerHTML = "";
+        new QRCode(qrContainer, {
+          text: offerCode,
+          width: 180,
+          height: 180,
+          colorDark: "#0f172a",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.L
+        });
+      }
+
+      if (statusEl) {
+        statusEl.textContent = "Waiting for Team 2 to scan Offer QR...";
+        statusEl.className = "p2p-status-pill p2p-status-waiting";
+      }
+    } catch (err) {
+      console.warn("Offline host error:", err);
+      if (statusEl) {
+        statusEl.textContent = "Could not create offer: " + err.message;
+        statusEl.className = "p2p-status-pill p2p-status-disconnected";
+      }
+    }
   },
 
   checkUrlForRoomCode: function() {
@@ -1635,6 +2256,244 @@ const TabooApp = {
       this.showScreen("screen-setup");
     });
 
+    document.getElementById("btn-p2p-offline-start")?.addEventListener("click", () => {
+      this.closeModal("modal-dual-device");
+      this.renderTeamsSetupList();
+      this.showScreen("screen-setup");
+    });
+
+    // Dual Device: Mode Toggle (Online/Hotspot vs Zero-Internet QR)
+    const btnModeOnline = document.getElementById("btn-mode-online");
+    const btnModeOffline = document.getElementById("btn-mode-offline");
+    const sectionOnline = document.getElementById("p2p-section-online");
+    const sectionOffline = document.getElementById("p2p-section-offline");
+
+    btnModeOnline?.addEventListener("click", () => {
+      btnModeOnline.classList.add("active");
+      btnModeOffline?.classList.remove("active");
+      if (sectionOnline) sectionOnline.style.display = "block";
+      if (sectionOffline) sectionOffline.style.display = "none";
+      P2PEngine.stopQRScanner();
+      const cam = document.getElementById("p2p-camera-container");
+      if (cam) cam.style.display = "none";
+      const txt = document.getElementById("p2p-text-fallback-container");
+      if (txt) txt.style.display = "none";
+      if (document.getElementById("p2p-tab-host")?.classList.contains("active")) {
+        this.initDualDeviceHost();
+      }
+    });
+
+    btnModeOffline?.addEventListener("click", () => {
+      btnModeOffline.classList.add("active");
+      btnModeOnline?.classList.remove("active");
+      if (sectionOnline) sectionOnline.style.display = "none";
+      if (sectionOffline) sectionOffline.style.display = "block";
+      if (document.getElementById("p2p-offline-tab-host")?.classList.contains("active")) {
+        this.initOfflineHostView();
+      }
+    });
+
+    // Offline Sub-tabs: Host vs Join
+    const tabOffHost = document.getElementById("p2p-offline-tab-host");
+    const tabOffJoin = document.getElementById("p2p-offline-tab-join");
+    const viewOffHost = document.getElementById("p2p-offline-view-host");
+    const viewOffJoin = document.getElementById("p2p-offline-view-join");
+
+    tabOffHost?.addEventListener("click", () => {
+      tabOffHost.classList.add("active");
+      tabOffJoin?.classList.remove("active");
+      if (viewOffHost) viewOffHost.style.display = "block";
+      if (viewOffJoin) viewOffJoin.style.display = "none";
+      P2PEngine.stopQRScanner();
+      const cam = document.getElementById("p2p-camera-container");
+      if (cam) cam.style.display = "none";
+      const txt = document.getElementById("p2p-text-fallback-container");
+      if (txt) txt.style.display = "none";
+      this.initOfflineHostView();
+    });
+
+    tabOffJoin?.addEventListener("click", () => {
+      tabOffJoin.classList.add("active");
+      tabOffHost?.classList.remove("active");
+      if (viewOffJoin) viewOffJoin.style.display = "block";
+      if (viewOffHost) viewOffHost.style.display = "none";
+      P2PEngine.stopQRScanner();
+      const cam = document.getElementById("p2p-camera-container");
+      if (cam) cam.style.display = "none";
+      const txt = document.getElementById("p2p-text-fallback-container");
+      if (txt) txt.style.display = "none";
+      const ansCont = document.getElementById("p2p-offline-answer-container");
+      if (ansCont) ansCont.style.display = "none";
+      const statusEl = document.getElementById("p2p-offline-status");
+      if (statusEl) {
+        statusEl.textContent = "Ready to scan Team 1's Offer QR";
+        statusEl.className = "p2p-status-pill p2p-status-idle";
+      }
+    });
+
+    // Offline Joiner scans Host's Offer QR
+    document.getElementById("btn-offline-scan-offer")?.addEventListener("click", () => {
+      const camContainer = document.getElementById("p2p-camera-container");
+      const videoEl = document.getElementById("p2p-scanner-video");
+      const camStatus = document.getElementById("p2p-camera-status-text");
+
+      if (camContainer) camContainer.style.display = "block";
+      if (camStatus) camStatus.textContent = "Point camera at Team 1's Offer QR code...";
+
+      P2PEngine.startQRScanner(
+        videoEl,
+        async (scannedText) => {
+          try {
+            if (camContainer) camContainer.style.display = "none";
+            const statusEl = document.getElementById("p2p-offline-status");
+            if (statusEl) {
+              statusEl.textContent = "Offer scanned! Generating Answer QR...";
+              statusEl.className = "p2p-status-pill p2p-status-waiting";
+            }
+            const answerCode = await P2PEngine.createOfflineAnswer(scannedText);
+            this.currentOfflineSignalCode = answerCode;
+
+            const ansCont = document.getElementById("p2p-offline-answer-container");
+            const ansQrBox = document.getElementById("p2p-offline-answer-qr");
+            if (ansCont && ansQrBox && typeof QRCode !== "undefined") {
+              ansCont.style.display = "flex";
+              ansQrBox.innerHTML = "";
+              new QRCode(ansQrBox, {
+                text: answerCode,
+                width: 180,
+                height: 180,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.L
+              });
+            }
+
+            if (statusEl) {
+              statusEl.textContent = "Answer ready! Let Team 1 scan your QR.";
+              statusEl.className = "p2p-status-pill p2p-status-waiting";
+            }
+            this.showToast("✓ Offer received! Now let Team 1 scan your Answer QR.");
+          } catch (e) {
+            this.showToast("Invalid Offer QR: " + e.message);
+          }
+        },
+        (err) => {
+          if (camContainer) camContainer.style.display = "none";
+          this.showToast("Camera access error: " + err.message);
+        }
+      );
+    });
+
+    // Offline Host scans Joiner's Answer QR
+    document.getElementById("btn-offline-scan-answer")?.addEventListener("click", () => {
+      const camContainer = document.getElementById("p2p-camera-container");
+      const videoEl = document.getElementById("p2p-scanner-video");
+      const camStatus = document.getElementById("p2p-camera-status-text");
+
+      if (camContainer) camContainer.style.display = "block";
+      if (camStatus) camStatus.textContent = "Point camera at Team 2's Answer QR code...";
+
+      P2PEngine.startQRScanner(
+        videoEl,
+        async (scannedText) => {
+          try {
+            if (camContainer) camContainer.style.display = "none";
+            const statusEl = document.getElementById("p2p-offline-status");
+            if (statusEl) {
+              statusEl.textContent = "Connecting to Team 2...";
+              statusEl.className = "p2p-status-pill p2p-status-waiting";
+            }
+            await P2PEngine.applyOfflineAnswer(scannedText);
+            this.showToast("🎉 Answer applied! Connecting via offline WebRTC...");
+          } catch (e) {
+            this.showToast("Invalid Answer QR: " + e.message);
+          }
+        },
+        (err) => {
+          if (camContainer) camContainer.style.display = "none";
+          this.showToast("Camera access error: " + err.message);
+        }
+      );
+    });
+
+    // Cancel / Stop Camera Scanner
+    document.getElementById("btn-p2p-cancel-camera")?.addEventListener("click", () => {
+      P2PEngine.stopQRScanner();
+      const camContainer = document.getElementById("p2p-camera-container");
+      if (camContainer) camContainer.style.display = "none";
+    });
+
+    // Toggle Laptop / Text Fallback Input
+    const toggleTextFallback = () => {
+      const container = document.getElementById("p2p-text-fallback-container");
+      if (!container) return;
+      const isHidden = container.style.display === "none" || !container.style.display;
+      container.style.display = isHidden ? "block" : "none";
+      if (isHidden && this.currentOfflineSignalCode) {
+        const input = document.getElementById("p2p-text-fallback-input");
+        if (input) input.value = this.currentOfflineSignalCode;
+      }
+    };
+    document.getElementById("btn-offline-host-text")?.addEventListener("click", toggleTextFallback);
+    document.getElementById("btn-offline-join-text")?.addEventListener("click", toggleTextFallback);
+
+    // Copy Code Fallback
+    document.getElementById("btn-p2p-copy-code")?.addEventListener("click", () => {
+      const input = document.getElementById("p2p-text-fallback-input");
+      const val = (input && input.value.trim()) || this.currentOfflineSignalCode;
+      if (!val) {
+        this.showToast("No code to copy yet!");
+        return;
+      }
+      navigator.clipboard.writeText(val).then(() => {
+        this.showToast("Connection code copied to clipboard!");
+      }).catch(() => {
+        prompt("Copy this code:", val);
+      });
+    });
+
+    // Apply Code Fallback
+    document.getElementById("btn-p2p-apply-text")?.addEventListener("click", async () => {
+      const input = document.getElementById("p2p-text-fallback-input");
+      const val = input ? input.value.trim() : "";
+      if (!val) {
+        this.showToast("Please paste the connection code first!");
+        return;
+      }
+
+      const isOffer = val.startsWith("TABOO_OFFER:") || (!val.startsWith("TABOO_ANSWER:") && P2PEngine.role !== "host");
+      const isAnswer = val.startsWith("TABOO_ANSWER:") || (P2PEngine.role === "host");
+
+      try {
+        if (isOffer && (!val.startsWith("TABOO_ANSWER:") || P2PEngine.role !== "host")) {
+          const answerCode = await P2PEngine.createOfflineAnswer(val);
+          this.currentOfflineSignalCode = answerCode;
+          if (input) input.value = answerCode;
+
+          const ansCont = document.getElementById("p2p-offline-answer-container");
+          const ansQrBox = document.getElementById("p2p-offline-answer-qr");
+          if (ansCont && ansQrBox && typeof QRCode !== "undefined") {
+            ansCont.style.display = "flex";
+            ansQrBox.innerHTML = "";
+            new QRCode(ansQrBox, {
+              text: answerCode,
+              width: 180,
+              height: 180,
+              colorDark: "#0f172a",
+              colorLight: "#ffffff",
+              correctLevel: QRCode.CorrectLevel.L
+            });
+          }
+          this.showToast("✓ Offer applied! Answer generated. Send code to Host.");
+        } else if (isAnswer) {
+          await P2PEngine.applyOfflineAnswer(val);
+          this.showToast("🎉 Answer applied! Connecting via offline WebRTC...");
+        }
+      } catch (err) {
+        this.showToast("Error applying code: " + err.message);
+      }
+    });
+
     // Resume Session Banner Buttons
     document.getElementById("btn-resume-session")?.addEventListener("click", () => this.restoreSession());
     document.getElementById("btn-discard-session")?.addEventListener("click", () => this.discardActiveSession());
@@ -1663,6 +2522,47 @@ const TabooApp = {
     document.getElementById("btn-nav-rules")?.addEventListener("click", () => this.showModal("modal-rules"));
     document.getElementById("btn-nav-custom")?.addEventListener("click", () => this.showModal("modal-custom-cards"));
     document.getElementById("btn-nav-quick-buzzer")?.addEventListener("click", () => this.showModal("modal-buzzer"));
+
+    // Setup Screen: Game Format Toggle (Teams vs Free-For-All)
+    document.getElementById("format-pill-teams")?.addEventListener("click", () => {
+      document.getElementById("format-pill-teams").classList.add("active");
+      document.getElementById("format-pill-ffa")?.classList.remove("active");
+      const teamsView = document.getElementById("setup-teams-view");
+      const ffaView = document.getElementById("setup-ffa-view");
+      const teamsDesc = document.getElementById("format-desc-teams");
+      const ffaDesc = document.getElementById("format-desc-ffa");
+      if (teamsView) teamsView.style.display = "block";
+      if (ffaView) ffaView.style.display = "none";
+      if (teamsDesc) teamsDesc.style.display = "block";
+      if (ffaDesc) ffaDesc.style.display = "none";
+      this.config.gameFormat = "teams";
+      this.saveSettings();
+    });
+
+    document.getElementById("format-pill-ffa")?.addEventListener("click", () => {
+      document.getElementById("format-pill-ffa").classList.add("active");
+      document.getElementById("format-pill-teams")?.classList.remove("active");
+      const teamsView = document.getElementById("setup-teams-view");
+      const ffaView = document.getElementById("setup-ffa-view");
+      const teamsDesc = document.getElementById("format-desc-teams");
+      const ffaDesc = document.getElementById("format-desc-ffa");
+      if (teamsView) teamsView.style.display = "none";
+      if (ffaView) ffaView.style.display = "block";
+      if (teamsDesc) teamsDesc.style.display = "none";
+      if (ffaDesc) ffaDesc.style.display = "block";
+      this.config.gameFormat = "ffa";
+      this.renderPlayersSetupList();
+      this.saveSettings();
+    });
+
+    document.getElementById("btn-add-player")?.addEventListener("click", () => this.addPlayer());
+
+    // Free-For-All Gameplay In-Between Word Controls
+    document.getElementById("btn-ffa-next-word")?.addEventListener("click", () => this.proceedToNextWord());
+    document.getElementById("btn-ffa-cancel-score")?.addEventListener("click", () => this.selectGuesser("none"));
+
+    // Device 2 Spectator Taboo Buzzer
+    document.getElementById("btn-spectator-buzzer")?.addEventListener("click", () => this.handleTaboo());
 
     // Setup Screen Options
     document.getElementById("btn-add-team")?.addEventListener("click", () => this.addTeam());

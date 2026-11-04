@@ -103,16 +103,49 @@
       <section id="screen-setup" class="screen">
         <div class="setup-container">
           
-          <!-- Team Setup -->
+          <!-- Game Format Selector: Teams vs Free-For-All -->
           <div class="setup-card">
             <div class="section-title">
-              <span>👥 TEAMS & PLAYERS</span>
+              <span>🎮 GAME FORMAT</span>
+            </div>
+            <div class="options-grid" style="grid-template-columns: 1fr 1fr;">
+              <div id="format-pill-teams" class="option-pill active" data-format-val="teams">👥 Team vs Team</div>
+              <div id="format-pill-ffa" class="option-pill" data-format-val="ffa">🌟 Free-For-All (Individual)</div>
+            </div>
+            <p id="format-desc-teams" class="text-xs text-slate-300 mt-2 leading-relaxed">
+              Classic Taboo: Teams alternate giving clues to teammates while opponents buzz.
+            </p>
+            <p id="format-desc-ffa" class="text-xs text-slate-300 mt-2 leading-relaxed" style="display: none;">
+              🎉 <strong>Everyone Plays!</strong> 1 Clue-Giver & 1 Monitor rotate each turn, while all other players guess. When a word is guessed, <strong>both Clue-Giver and Guesser get +1 pt</strong>!
+            </p>
+          </div>
+
+          <!-- Team Setup (Visible when format === 'teams') -->
+          <div id="setup-teams-view" class="setup-card">
+            <div class="section-title">
+              <span>👥 TEAMS</span>
             </div>
             <div id="teams-setup-list" class="teams-list">
               <!-- Dynamically populated -->
             </div>
             <button id="btn-add-team" type="button" class="btn-ghost mt-3 text-orange-400" style="margin-top: 10px;">
               + Add Another Team
+            </button>
+          </div>
+
+          <!-- Free-For-All Players Setup (Visible when format === 'ffa') -->
+          <div id="setup-ffa-view" class="setup-card" style="display: none;">
+            <div class="section-title">
+              <span>🌟 PLAYERS (INDIVIDUAL)</span>
+            </div>
+            <p class="text-xs text-slate-400 mb-3">
+              Minimum 3 players. Each round, 1 player gives clues, 1 monitors, and everyone else guesses!
+            </p>
+            <div id="ffa-players-setup-list" class="teams-list">
+              <!-- Dynamically populated -->
+            </div>
+            <button id="btn-add-player" type="button" class="btn-ghost mt-3 text-orange-400" style="margin-top: 10px;">
+              + Add Player
             </button>
           </div>
 
@@ -262,14 +295,43 @@
             Round 1 • Turn 1
           </div>
 
-          <h2 id="handoff-team-title" class="handoff-team-name">Team Orange</h2>
-          <div id="handoff-team-score" class="handoff-score-badge">Current Score: 0 pts</div>
+          <div id="handoff-view-teams" style="width: 100%; max-width: 320px;">
+            <h2 id="handoff-team-title" class="handoff-team-name">Team Orange</h2>
+            <div id="handoff-team-score" class="handoff-score-badge">Current Score: 0 pts</div>
 
-          <div class="handoff-card-prompt">
-            <div class="prompt-icon">📱👀</div>
-            <h3 class="prompt-title">Hand the phone to the Clue Giver</h3>
-            <p id="handoff-prompt-desc" class="prompt-desc">
-              Only the Clue Giver and opposing watchers should see the screen!
+            <div class="handoff-card-prompt">
+              <div class="prompt-icon">📱👀</div>
+              <h3 class="prompt-title">Hand the phone to the Clue Giver</h3>
+              <p id="handoff-prompt-desc" class="prompt-desc">
+                Only the Clue Giver and opposing watchers should see the screen!
+              </p>
+            </div>
+          </div>
+
+          <!-- Free-For-All Mode Handoff View -->
+          <div id="handoff-view-ffa" style="display: none; width: 100%; max-width: 340px;">
+            <div class="ffa-role-cards-container">
+              <div class="ffa-role-card ffa-role-cluegiver">
+                <span class="ffa-role-badge" style="color: #f97316;">🗣️ CLUE GIVER</span>
+                <div id="handoff-ffa-cluegiver-name" class="ffa-role-name">Player 1</div>
+                <div class="ffa-role-sub">Describe cards without saying Taboo words</div>
+              </div>
+              
+              <div class="ffa-role-card ffa-role-monitor">
+                <span class="ffa-role-badge" style="color: #ef4444;">🚨 MONITOR & BUZZER</span>
+                <div id="handoff-ffa-monitor-name" class="ffa-role-name">Player 2</div>
+                <div class="ffa-role-sub">Sit next to Clue Giver • Update scores & buzz Taboos</div>
+              </div>
+
+              <div class="ffa-role-card ffa-role-guessers">
+                <span class="ffa-role-badge" style="color: #3b82f6;">🙋‍♂️ GUESSERS (ALL OTHERS)</span>
+                <div id="handoff-ffa-guessers-list" class="ffa-role-name" style="font-size: 1rem;">Player 3, Player 4</div>
+                <div class="ffa-role-sub">Shout guesses! Monitor awards points</div>
+              </div>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-2 mb-2 leading-relaxed text-center">
+              📱 <strong>Clue Giver & Monitor</strong> hold this phone.<br>Guessers watch <strong>Device 2</strong> for live scores!
             </p>
           </div>
 
@@ -401,6 +463,106 @@
           </div>
         </div>
 
+        <!-- Free-For-All Word Score & Pause Modal (Monitor Controls) -->
+        <div id="ffa-scoring-modal" class="ffa-scoring-modal" style="display: none;">
+          <div class="ffa-scoring-content">
+            
+            <!-- Step A: Guesser Selection -->
+            <div id="ffa-step-select-guesser">
+              <div class="ffa-modal-header">
+                <span class="text-xl">🎉</span>
+                <div>
+                  <h4 class="font-bold text-white text-base">Who guessed the word?</h4>
+                  <p class="text-xs text-slate-300">Timer is paused. Clue Giver & Guesser both get +1 pt:</p>
+                </div>
+              </div>
+              
+              <div id="ffa-guessers-btn-grid" class="ffa-guessers-grid">
+                <!-- Dynamically populated buttons for each eligible guesser -->
+              </div>
+
+              <button id="btn-ffa-cancel-score" type="button" class="btn-ghost text-xs text-slate-400 w-full mt-2" style="justify-content: center;">
+                ✕ Cancel / Back to Card
+              </button>
+            </div>
+
+            <!-- Step B: Outcome Confirmed & Next Word -->
+            <div id="ffa-step-next-word" style="display: none;">
+              <div id="ffa-outcome-banner" class="ffa-outcome-banner">
+                <!-- e.g. "✓ Charlie guessed correctly! (+1 Alice, +1 Charlie)" -->
+              </div>
+              <p class="text-xs text-slate-300 text-center mb-3">
+                Score updated on both devices. Tap below when ready for the next word:
+              </p>
+              <button id="btn-ffa-next-word" type="button" class="btn-primary w-full py-3.5 text-base" style="background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+                <span>▶️ NEXT WORD (RESUME TIMER)</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           SCREEN 4B: DEVICE 2 SPECTATOR ARENA & LIVE SCOREBOARD
+           ======================================================== -->
+      <section id="screen-spectator" class="screen">
+        <div class="spectator-container">
+          
+          <div class="spectator-header">
+            <div class="flex items-center justify-between w-full mb-1">
+              <span id="spectator-round-banner" class="turn-banner" style="padding: 4px 12px; font-size: 0.75rem;">Round 1 • Turn 1</span>
+              <div id="spectator-timer-badge" class="spectator-timer-pill">⏱️ 60s</div>
+            </div>
+            <h2 class="spectator-title">🌟 LIVE SCOREBOARD</h2>
+          </div>
+
+          <!-- Current Turn Role Callout -->
+          <div class="spectator-roles-box">
+            <div class="spectator-role-item">
+              <span class="spectator-role-tag">🗣️ CLUE GIVER</span>
+              <span id="spectator-cluegiver-name" class="spectator-role-player">Alice</span>
+            </div>
+            <div class="spectator-role-divider">vs</div>
+            <div class="spectator-role-item">
+              <span class="spectator-role-tag">🚨 MONITOR</span>
+              <span id="spectator-monitor-name" class="spectator-role-player">Bob</span>
+            </div>
+          </div>
+
+          <div id="spectator-pause-alert" class="spectator-pause-banner" style="display: none;">
+            ⏸️ Score Update in Progress... (Timer Paused)
+          </div>
+
+          <!-- Ranked Leaderboard of All Players -->
+          <div class="spectator-card">
+            <div class="section-title">
+              <span>🏆 STANDINGS</span>
+              <span class="text-xs text-slate-400 font-normal">Real-time Scores</span>
+            </div>
+            <div id="spectator-leaderboard-list" class="spectator-leaderboard">
+              <!-- Dynamically populated with player ranks, scores, and medals -->
+            </div>
+          </div>
+
+          <!-- Live Card Activity Feed -->
+          <div class="spectator-card">
+            <div class="section-title">
+              <span>📜 ROUND EVENTS</span>
+            </div>
+            <div id="spectator-feed-list" class="spectator-feed">
+              <div class="text-xs text-slate-400 text-center py-2">Waiting for first word outcome...</div>
+            </div>
+          </div>
+
+          <!-- Spectator Buzzer Pad -->
+          <button id="btn-spectator-buzzer" type="button" class="btn-game-action btn-taboo w-full py-3" style="min-height: 54px; margin-top: 6px;">
+            <span class="action-icon">🚨</span>
+            <span class="action-label">TABOO BUZZER</span>
+          </button>
+
+        </div>
       </section>
 
       <!-- ========================================================
@@ -678,80 +840,193 @@
         <button class="icon-btn text-sm" data-close-modal="modal-dual-device">✕</button>
       </div>
 
-      <!-- Mode Selector Tabs: Host vs Join -->
-      <div class="p2p-tabs-bar">
-        <button id="p2p-tab-host" type="button" class="p2p-tab active">
-          <span>Host (Team 1)</span>
+      <!-- Connection Mode Toggle: Online/Hotspot (Default) vs Zero-Internet QR Mode -->
+      <div class="p2p-mode-toggle">
+        <button id="btn-mode-online" type="button" class="p2p-mode-btn active">
+          <span>🌐 Hotspot / Online</span>
         </button>
-        <button id="p2p-tab-join" type="button" class="p2p-tab">
-          <span>Join (Team 2)</span>
-        </button>
-      </div>
-
-      <!-- Host View -->
-      <div id="p2p-view-host" class="p2p-view">
-        <p class="text-sm text-slate-300 mb-3">
-          Share these credentials or QR code with <strong>Team 2's device</strong> to join. Strangers without the passcode will be blocked.
-        </p>
-
-        <div class="p2p-credentials-grid">
-          <div class="p2p-credential-card">
-            <span class="p2p-cred-label">🎉 PARTY CODE</span>
-            <div id="p2p-display-code" class="p2p-cred-val">----</div>
-          </div>
-          <div class="p2p-credential-card">
-            <span class="p2p-cred-label">🔒 PASSCODE</span>
-            <div id="p2p-display-passcode" class="p2p-cred-val" style="color: #34d399; text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);">----</div>
-          </div>
-        </div>
-
-        <button id="btn-copy-room-link" type="button" class="btn-ghost text-xs text-orange-400 py-1 mb-3" style="justify-content: center; width: 100%;">
-          📋 Copy Invite Link (Includes Passcode)
-        </button>
-
-        <div id="p2p-qrcode-container" class="p2p-qr-box">
-          <!-- Dynamically generated QR Code -->
-        </div>
-
-        <div id="p2p-connection-status" class="p2p-status-pill p2p-status-waiting">
-          Connecting to room...
-        </div>
-
-        <button id="btn-p2p-host-start" type="button" class="btn-primary w-full mt-4" style="display: none; padding: 14px;">
-          <span>🚀 CONFIGURE MATCH & START</span>
+        <button id="btn-mode-offline" type="button" class="p2p-mode-btn">
+          <span>✈️ Zero-Internet QR</span>
         </button>
       </div>
 
-      <!-- Join View -->
-      <div id="p2p-view-join" class="p2p-view" style="display: none;">
-        <p class="text-sm text-slate-300 mb-3">
-          Enter the <strong>Party Code</strong> and <strong>Passcode</strong> shown on Team 1's phone:
-        </p>
-
-        <div class="flex flex-col gap-3 w-full">
-          <div class="form-group text-left" style="width: 100%;">
-            <label class="form-label text-xs">🎉 PARTY CODE (4-DIGIT)</label>
-            <input id="input-p2p-room-code" type="text" maxlength="6" placeholder="e.g. 5821" class="p2p-code-input" style="width: 100%; box-sizing: border-box;" autocomplete="off" autocapitalize="characters">
-          </div>
-
-          <div class="form-group text-left" style="width: 100%;">
-            <label class="form-label text-xs">🔒 SECURITY PASSCODE (4-DIGIT PIN)</label>
-            <input id="input-p2p-passcode" type="text" maxlength="6" placeholder="e.g. 4812" class="p2p-code-input" style="width: 100%; box-sizing: border-box; color: #34d399;" autocomplete="off">
-          </div>
-
-          <button id="btn-p2p-join-submit" type="button" class="btn-primary w-full py-3 mt-1">
-            <span>🚀 VERIFY & JOIN PARTY</span>
+      <!-- ==========================================
+           SECTION A: ONLINE / STANDARD HOTSPOT
+           ========================================== -->
+      <div id="p2p-section-online">
+        <!-- Mode Selector Tabs: Host vs Join -->
+        <div class="p2p-tabs-bar">
+          <button id="p2p-tab-host" type="button" class="p2p-tab active">
+            <span>Host (Team 1)</span>
+          </button>
+          <button id="p2p-tab-join" type="button" class="p2p-tab">
+            <span>Join (Team 2)</span>
           </button>
         </div>
 
-        <div id="p2p-join-status" class="p2p-status-pill p2p-status-idle mt-4">
-          Ready to join
+        <!-- Host View -->
+        <div id="p2p-view-host" class="p2p-view">
+          <p class="text-sm text-slate-300 mb-3">
+            Share these credentials or QR code with <strong>Team 2's device</strong> to join. Strangers without the passcode will be blocked.
+          </p>
+
+          <div class="p2p-credentials-grid">
+            <div class="p2p-credential-card">
+              <span class="p2p-cred-label">🎉 PARTY CODE</span>
+              <div id="p2p-display-code" class="p2p-cred-val">----</div>
+            </div>
+            <div class="p2p-credential-card">
+              <span class="p2p-cred-label">🔒 PASSCODE</span>
+              <div id="p2p-display-passcode" class="p2p-cred-val" style="color: #34d399; text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);">----</div>
+            </div>
+          </div>
+
+          <button id="btn-copy-room-link" type="button" class="btn-ghost text-xs text-orange-400 py-1 mb-3" style="justify-content: center; width: 100%;">
+            📋 Copy Invite Link (Includes Passcode)
+          </button>
+
+          <div id="p2p-qrcode-container" class="p2p-qr-box">
+            <!-- Dynamically generated QR Code -->
+          </div>
+
+          <div id="p2p-connection-status" class="p2p-status-pill p2p-status-waiting">
+            Connecting to room...
+          </div>
+
+          <button id="btn-p2p-host-start" type="button" class="btn-primary w-full mt-4" style="display: none; padding: 14px;">
+            <span>🚀 CONFIGURE MATCH & START</span>
+          </button>
         </div>
 
-        <div class="p2p-help-box mt-4">
-          <p class="text-xs text-slate-400 leading-relaxed">
-            🛡️ <strong>Private Match:</strong> The passcode protects your game from strangers. Only players with both codes can connect to the match.
+        <!-- Join View -->
+        <div id="p2p-view-join" class="p2p-view" style="display: none;">
+          <p class="text-sm text-slate-300 mb-3">
+            Enter the <strong>Party Code</strong> and <strong>Passcode</strong> shown on Team 1's phone:
           </p>
+
+          <div class="flex flex-col gap-3 w-full">
+            <div class="form-group text-left" style="width: 100%;">
+              <label class="form-label text-xs">🎉 PARTY CODE (4-DIGIT)</label>
+              <input id="input-p2p-room-code" type="text" maxlength="6" placeholder="e.g. 5821" class="p2p-code-input" style="width: 100%; box-sizing: border-box;" autocomplete="off" autocapitalize="characters">
+            </div>
+
+            <div class="form-group text-left" style="width: 100%;">
+              <label class="form-label text-xs">🔒 SECURITY PASSCODE (4-DIGIT PIN)</label>
+              <input id="input-p2p-passcode" type="text" maxlength="6" placeholder="e.g. 4812" class="p2p-code-input" style="width: 100%; box-sizing: border-box; color: #34d399;" autocomplete="off">
+            </div>
+
+            <button id="btn-p2p-join-submit" type="button" class="btn-primary w-full py-3 mt-1">
+              <span>🚀 VERIFY & JOIN PARTY</span>
+            </button>
+          </div>
+
+          <div id="p2p-join-status" class="p2p-status-pill p2p-status-idle mt-4">
+            Ready to join
+          </div>
+
+          <div class="p2p-help-box mt-4">
+            <p class="text-xs text-slate-400 leading-relaxed">
+              🛡️ <strong>Private Match:</strong> The passcode protects your game from strangers. Only players with both codes can connect to the match.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==========================================
+           SECTION B: OFFLINE ZERO-INTERNET QR MODE
+           ========================================== -->
+      <div id="p2p-section-offline" style="display: none;">
+        <p class="text-xs text-slate-300 mb-2 leading-relaxed">
+          ✈️ <strong>Airplane / Offline Mode:</strong> Connect both devices to the same Hotspot or Wi-Fi (no cellular data needed).
+        </p>
+
+        <!-- Offline Role Selector: Host vs Join -->
+        <div class="p2p-tabs-bar mb-3">
+          <button id="p2p-offline-tab-host" type="button" class="p2p-tab active">
+            <span>Host (Team 1)</span>
+          </button>
+          <button id="p2p-offline-tab-join" type="button" class="p2p-tab">
+            <span>Join (Team 2)</span>
+          </button>
+        </div>
+
+        <!-- Offline Host View -->
+        <div id="p2p-offline-view-host" class="p2p-view">
+          <p class="text-xs text-slate-300 mb-2">
+            1. Have Team 2 scan this <strong>Offer QR Code</strong> with their camera:
+          </p>
+
+          <div id="p2p-offline-offer-qr" class="p2p-qr-box">
+            <!-- Dynamically populated offer QR -->
+          </div>
+
+          <button id="btn-offline-scan-answer" type="button" class="btn-primary w-full py-2.5 text-xs mb-2">
+            📷 2. SCAN TEAM 2's ANSWER QR
+          </button>
+
+          <button id="btn-offline-host-text" type="button" class="btn-ghost text-xs py-1" style="color: #60a5fa;">
+            💻 Laptop / Copy & Paste Text
+          </button>
+
+          <button id="btn-p2p-offline-start" type="button" class="btn-primary w-full mt-3" style="display: none; padding: 14px;">
+            <span>🚀 CONFIGURE MATCH & START</span>
+          </button>
+        </div>
+
+        <!-- Offline Join View -->
+        <div id="p2p-offline-view-join" class="p2p-view" style="display: none;">
+          <p class="text-xs text-slate-300 mb-2">
+            1. Tap below to scan Team 1's Offer QR code from their screen:
+          </p>
+
+          <button id="btn-offline-scan-offer" type="button" class="btn-primary w-full py-2.5 text-xs mb-3">
+            📷 SCAN TEAM 1's OFFER QR
+          </button>
+
+          <div id="p2p-offline-answer-container" style="display: none; width: 100%; flex-direction: column; align-items: center;">
+            <p class="text-xs text-emerald-400 font-bold mb-2">
+              ✓ Scanned! Now let Team 1 scan your Answer QR below:
+            </p>
+            <div id="p2p-offline-answer-qr" class="p2p-qr-box">
+              <!-- Dynamically populated answer QR -->
+            </div>
+          </div>
+
+          <button id="btn-offline-join-text" type="button" class="btn-ghost text-xs py-1" style="color: #60a5fa;">
+            💻 Laptop / Copy & Paste Text
+          </button>
+        </div>
+
+        <!-- Live Camera Scanner Box (Embedded) -->
+        <div id="p2p-camera-container" style="display: none; width: 100%; margin-top: 10px;">
+          <div class="camera-scanner-box">
+            <video id="p2p-scanner-video" class="camera-scanner-video" playsinline></video>
+            <div class="camera-reticle"></div>
+          </div>
+          <p id="p2p-camera-status-text" class="text-xs text-center text-slate-300 mb-2">
+            Point camera at the QR code on the other device's screen...
+          </p>
+          <button id="btn-p2p-cancel-camera" type="button" class="btn-ghost text-xs py-1 w-full" style="justify-content: center; color: #f87171;">
+            ✕ Stop Camera Scanner
+          </button>
+        </div>
+
+        <!-- Text Fallback Box (For Laptops without cameras) -->
+        <div id="p2p-text-fallback-container" style="display: none; width: 100%; margin-top: 10px; text-align: left;">
+          <label class="form-label text-xs">PASTE / COPY SIGNAL STRING (LAPTOP FALLBACK)</label>
+          <textarea id="p2p-text-fallback-input" class="form-input font-mono text-xs mb-2" rows="3" placeholder="Paste TABOO_OFFER: or TABOO_ANSWER: string here..."></textarea>
+          <div class="flex gap-2">
+            <button id="btn-p2p-copy-code" type="button" class="btn-secondary flex-1 text-xs py-1.5">
+              📋 Copy My Code
+            </button>
+            <button id="btn-p2p-apply-text" type="button" class="btn-primary flex-1 text-xs py-1.5">
+              ✓ Apply Code
+            </button>
+          </div>
+        </div>
+
+        <div id="p2p-offline-status" class="p2p-status-pill p2p-status-idle mt-3">
+          Ready for offline pairing
         </div>
       </div>
 
@@ -765,6 +1040,7 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- Scripts -->
+  <script src="js/jsqr.min.js"></script>
   <script src="js/peerjs.min.js"></script>
   <script src="js/qrcode.min.js"></script>
   <script src="js/cards.js"></script>

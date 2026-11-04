@@ -1839,6 +1839,65 @@ input:checked + .slider:before {
   100% { opacity: 1; }
 }
 
+/* Offline WebRTC & Camera Scanner Styles */
+.p2p-mode-toggle {
+  display: flex;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.p2p-mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.p2p-mode-btn.active {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.camera-scanner-box {
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #000;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  border: 1.5px solid rgba(59, 130, 246, 0.5);
+}
+
+.camera-scanner-video {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+.camera-reticle {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  border: 2px dashed #38bdf8;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+  pointer-events: none;
+}
+
 /* Responsive Mobile Adjustments */
 @media (max-width: 480px), (max-height: 740px) {
   .hero-logo-box {
@@ -1892,4 +1951,312 @@ input:checked + .slider:before {
     padding: 12px 6px;
     min-height: 64px;
   }
+}
+
+/* ========================================================
+   FREE-FOR-ALL (INDIVIDUAL / NO TEAMS) & SPECTATOR MODE
+   ======================================================== */
+.ffa-role-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.ffa-role-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.ffa-role-cluegiver {
+  border-left: 4px solid #f97316;
+}
+
+.ffa-role-monitor {
+  border-left: 4px solid #ef4444;
+}
+
+.ffa-role-guessers {
+  border-left: 4px solid #3b82f6;
+}
+
+.ffa-role-badge {
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.ffa-role-name {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.ffa-role-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+/* FFA Scoring Modal (Word Outcome & Guesser Picker) */
+.ffa-scoring-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(10px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  animation: fadeIn 0.18s ease-out;
+}
+
+.ffa-scoring-content {
+  width: 100%;
+  max-width: 360px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.ffa-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.ffa-guessers-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ffa-guesser-btn {
+  padding: 14px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: #fff;
+  font-weight: bold;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.ffa-guesser-btn:hover,
+.ffa-guesser-btn:active {
+  background: rgba(249, 115, 22, 0.2);
+  border-color: #f97316;
+  transform: translateY(-1px);
+}
+
+.ffa-outcome-banner {
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-weight: bold;
+  font-size: 0.95rem;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.ffa-outcome-correct {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #34d399;
+}
+
+.ffa-outcome-taboo {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+}
+
+.ffa-outcome-skip {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+/* Spectator Arena & Live Scoreboard (Device 2) */
+.spectator-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  gap: 12px;
+}
+
+.spectator-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.spectator-title {
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+}
+
+.spectator-roles-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+.spectator-role-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.spectator-role-tag {
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: #94a3b8;
+}
+
+.spectator-role-player {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.spectator-role-divider {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #64748b;
+}
+
+.spectator-pause-banner {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.25);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 10px;
+  color: #fbbf24;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  animation: pulse 1.5s infinite;
+}
+
+.spectator-card {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 14px;
+  width: 100%;
+  text-align: left;
+}
+
+.spectator-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.spectator-player-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.3s ease;
+}
+
+.spectator-player-card.active-role {
+  border-color: #f97316;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.25);
+}
+
+.spectator-player-rank {
+  font-size: 1.1rem;
+  font-weight: 900;
+  width: 28px;
+  text-align: center;
+}
+
+.spectator-player-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #fff;
+  flex: 1;
+  margin-left: 8px;
+}
+
+.spectator-player-score {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #f97316;
+}
+
+.spectator-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 130px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.spectator-feed-item {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  font-size: 0.8rem;
+  border-left: 3px solid #3b82f6;
+  color: #cbd5e1;
+}
+
+.spectator-feed-item.feed-correct {
+  border-left-color: #10b981;
+}
+
+.spectator-feed-item.feed-taboo {
+  border-left-color: #ef4444;
+}
+
+.spectator-feed-item.feed-skip {
+  border-left-color: #f59e0b;
+}
+
+.spectator-timer-pill {
+  padding: 4px 10px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  color: #60a5fa;
 }
