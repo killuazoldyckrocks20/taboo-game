@@ -59,6 +59,13 @@ const TabooApp = {
   // NAVIGATION & SCREEN SWITCHING
   // ==========================================
   showScreen: function(screenId) {
+    // If this device is the client (Device 2 in P2P), block access to setup screen!
+    if (P2PEngine.isConnected && P2PEngine.role === "client" && screenId === "screen-setup") {
+      this.showToast("Match settings are managed by Team 1's phone.");
+      this.showScreen("screen-p2p-lobby");
+      return;
+    }
+
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     const target = document.getElementById(screenId);
     if (target) {
@@ -1051,11 +1058,19 @@ const TabooApp = {
     const soundToggle = document.getElementById("toggle-sound");
     if (soundToggle) soundToggle.checked = !SoundEngine.isMuted;
 
-    const tabooToggle = document.getElementById("toggle-taboo-penalty");
-    if (tabooToggle) tabooToggle.checked = (this.config.tabooPenalty === -2);
+    // Update taboo penalty pills
+    const tabooPill = document.querySelector(`[data-taboo-val="${this.config.tabooPenalty}"]`);
+    if (tabooPill) {
+      document.querySelectorAll("[data-taboo-val]").forEach(p => p.classList.remove("active"));
+      tabooPill.classList.add("active");
+    }
 
-    const skipToggle = document.getElementById("toggle-skip-penalty");
-    if (skipToggle) skipToggle.checked = (this.config.skipPenalty < 0);
+    // Update skip penalty pills
+    const skipPill = document.querySelector(`[data-skip-val="${this.config.skipPenalty}"]`);
+    if (skipPill) {
+      document.querySelectorAll("[data-skip-val]").forEach(p => p.classList.remove("active"));
+      skipPill.classList.add("active");
+    }
 
     const audioToggle = document.getElementById("toggle-record-audio");
     if (audioToggle) audioToggle.checked = Boolean(this.config.recordAudio);
@@ -1273,9 +1288,18 @@ const TabooApp = {
       const startHostBtn = document.getElementById("btn-p2p-host-start");
       if (startHostBtn) startHostBtn.style.display = "block";
 
+      const currentScreen = document.querySelector(".screen.active")?.id;
+      const isGameActive = this.state.deck.length > 0 && !this.state.isGameOver;
+
       P2PEngine.send("MATCH_CONFIG", {
         config: this.config,
-        teams: this.state.teams
+        teams: this.state.teams,
+        isGameStarted: isGameActive && (currentScreen === "screen-game" || currentScreen === "screen-handoff"),
+        currentScreen: currentScreen,
+        activeCard: this.activeCard,
+        timeLeft: this.state.timeLeft,
+        currentTeamIdx: this.state.currentTeamIdx,
+        roundNumber: this.state.roundNumber
       });
     });
 
@@ -1285,10 +1309,24 @@ const TabooApp = {
       this.updateSkipButtonLabel();
       this.updateTabooButtonLabel();
       this.showToast("Connected to Team 1's match!");
-      const joinStatus = document.getElementById("p2p-join-status");
-      if (joinStatus) {
-        joinStatus.textContent = "Connected! Waiting for host to start...";
-        joinStatus.className = "p2p-status-pill p2p-status-connected";
+
+      this.closeModal("modal-dual-device");
+
+      if (payload.isGameStarted) {
+        this.state.currentTeamIdx = payload.currentTeamIdx || 0;
+        this.state.roundNumber = payload.roundNumber || 1;
+        if (payload.currentScreen === "screen-game" && payload.activeCard) {
+          this.activeCard = payload.activeCard;
+          this.state.timeLeft = payload.timeLeft || 60;
+          this.showScreen("screen-game");
+          this.renderCard(this.activeCard);
+          this.updateTurnScorePill();
+        } else {
+          this.showHandoffScreen();
+        }
+      } else {
+        // Match not yet started by host: show lobby, NEVER setup screen!
+        this.showScreen("screen-p2p-lobby");
       }
     });
 
@@ -1433,7 +1471,10 @@ const TabooApp = {
       if (passInput && pass) passInput.value = pass;
 
       if (room && pass) {
-        P2PEngine.joinRoom(room, pass).catch(err => {
+        P2PEngine.joinRoom(room, pass).then(() => {
+          this.closeModal("modal-dual-device");
+          this.showScreen("screen-p2p-lobby");
+        }).catch(err => {
           this.showToast("Could not join game: " + err.message);
         });
       }
@@ -1462,18 +1503,28 @@ const TabooApp = {
       this.showToast(SoundEngine.isMuted ? "Audio muted" : "Audio unmuted");
     });
 
-    document.getElementById("toggle-taboo-penalty")?.addEventListener("change", (e) => {
-      this.config.tabooPenalty = e.target.checked ? -2 : -1;
-      this.updateTabooButtonLabel();
-      this.saveSettings();
-      this.showToast(e.target.checked ? "Strict Taboo penalty enabled (-2 pts)" : "Taboo penalty set to -1 pt");
+    // Taboo penalty pill options (-2 pts default vs -1 pt)
+    document.querySelectorAll("[data-taboo-val]").forEach(pill => {
+      pill.addEventListener("click", () => {
+        document.querySelectorAll("[data-taboo-val]").forEach(p => p.classList.remove("active"));
+        pill.classList.add("active");
+        this.config.tabooPenalty = parseInt(pill.dataset.tabooVal, 10);
+        this.updateTabooButtonLabel();
+        this.saveSettings();
+        this.showToast(`Taboo penalty set to ${this.config.tabooPenalty} pts`);
+      });
     });
 
-    document.getElementById("toggle-skip-penalty")?.addEventListener("change", (e) => {
-      this.config.skipPenalty = e.target.checked ? -1 : 0;
-      this.updateSkipButtonLabel();
-      this.saveSettings();
-      this.showToast(e.target.checked ? "Skip penalty enabled (-1 pt)" : "Skip penalty disabled (0 pt)");
+    // Skip penalty pill options (-1 pt default vs 0 pt)
+    document.querySelectorAll("[data-skip-val]").forEach(pill => {
+      pill.addEventListener("click", () => {
+        document.querySelectorAll("[data-skip-val]").forEach(p => p.classList.remove("active"));
+        pill.classList.add("active");
+        this.config.skipPenalty = parseInt(pill.dataset.skipVal, 10);
+        this.updateSkipButtonLabel();
+        this.saveSettings();
+        this.showToast(this.config.skipPenalty < 0 ? "Skip penalty enabled (-1 pt)" : "Skip penalty disabled (0 pt)");
+      });
     });
 
     document.getElementById("toggle-record-audio")?.addEventListener("change", (e) => {
@@ -1545,7 +1596,9 @@ const TabooApp = {
       }
 
       P2PEngine.joinRoom(code, pass).then(() => {
+        this.closeModal("modal-dual-device");
         this.showToast("🎉 Passcode verified! Connected to Team 1.");
+        this.showScreen("screen-p2p-lobby");
       }).catch(err => {
         if (statusEl) {
           statusEl.textContent = err.message;
@@ -1553,6 +1606,13 @@ const TabooApp = {
         }
         this.showToast(err.message);
       });
+    });
+
+    // Leave P2P Lobby
+    document.getElementById("btn-leave-p2p-lobby")?.addEventListener("click", () => {
+      P2PEngine.disconnect();
+      this.showScreen("screen-welcome");
+      this.showToast("Disconnected from 2-device match.");
     });
 
     // Copy room invite link (includes party and passcode)
@@ -1593,6 +1653,10 @@ const TabooApp = {
 
     // Welcome Screen Buttons
     document.getElementById("btn-nav-play")?.addEventListener("click", () => {
+      if (P2PEngine.isConnected && P2PEngine.role === "client") {
+        this.showScreen("screen-p2p-lobby");
+        return;
+      }
       this.renderTeamsSetupList();
       this.showScreen("screen-setup");
     });

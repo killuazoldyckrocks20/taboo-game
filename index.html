@@ -169,26 +169,28 @@
               </label>
             </div>
 
-            <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px;">
-              <div>
-                <div class="setting-label">Strict Taboo Penalty (-2 pts)</div>
-                <div class="setting-sub">Deduct -2 points for saying a Taboo word (uncheck for -1 pt)</div>
+            <!-- Taboo Penalty Selection -->
+            <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px; flex-direction: column; align-items: flex-start; gap: 8px;">
+              <div style="width: 100%;">
+                <div class="setting-label">🚨 Taboo Penalty</div>
+                <div class="setting-sub">Points deducted for uttering a forbidden word (Default: -2 pts)</div>
               </div>
-              <label class="switch">
-                <input id="toggle-taboo-penalty" type="checkbox" checked>
-                <span class="slider"></span>
-              </label>
+              <div class="options-grid" style="width: 100%; grid-template-columns: 1fr 1fr;">
+                <div id="pill-taboo-penalty-2" class="option-pill active" data-taboo-val="-2">-2 pts (Default)</div>
+                <div id="pill-taboo-penalty-1" class="option-pill" data-taboo-val="-1">-1 pt</div>
+              </div>
             </div>
 
-            <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px;">
-              <div>
-                <div class="setting-label">Skip Penalty (-1 pt)</div>
-                <div class="setting-sub">Deduct -1 point for skipping a difficult card (uncheck for 0 pt)</div>
+            <!-- Skip Penalty Selection -->
+            <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px; flex-direction: column; align-items: flex-start; gap: 8px;">
+              <div style="width: 100%;">
+                <div class="setting-label">↷ Skip Penalty</div>
+                <div class="setting-sub">Points deducted for skipping a card (Default: -1 pt)</div>
               </div>
-              <label class="switch">
-                <input id="toggle-skip-penalty" type="checkbox" checked>
-                <span class="slider"></span>
-              </label>
+              <div class="options-grid" style="width: 100%; grid-template-columns: 1fr 1fr;">
+                <div id="pill-skip-penalty-1" class="option-pill active" data-skip-val="-1">-1 pt (Default)</div>
+                <div id="pill-skip-penalty-0" class="option-pill" data-skip-val="0">0 pt (Free)</div>
+              </div>
             </div>
 
             <div class="setting-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px;">
@@ -213,6 +215,41 @@
             </button>
           </div>
 
+        </div>
+      </section>
+
+      <!-- ========================================================
+           SCREEN 2.5: P2P LOBBY (DEVICE 2 / CLIENT WAITING VIEW)
+           ======================================================== -->
+      <section id="screen-p2p-lobby" class="screen">
+        <div class="handoff-container">
+          <div class="turn-banner" style="background: linear-gradient(135deg, #2563eb, #7c3aed);">
+            📱 2-Device Match • Connected
+          </div>
+
+          <div class="hero-logo-box" style="margin-top: 10px;">
+            <div class="hero-icon-pulse">🎮</div>
+            <h2 class="hero-title" style="font-size: 2rem;">YOU ARE IN!</h2>
+            <p class="hero-subtitle" style="color: #60a5fa;">Connected to Team 1's Phone</p>
+          </div>
+
+          <div class="handoff-card-prompt" style="border-color: rgba(59, 130, 246, 0.4); background: rgba(15, 23, 42, 0.75);">
+            <div class="flex items-center justify-center gap-2 mb-2" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span class="rec-dot" style="background-color: #34d399;"></span>
+              <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider" style="color: #34d399;">LOBBY ACTIVE</span>
+            </div>
+            <h3 class="prompt-title text-base">Waiting for Team 1 to launch the round</h3>
+            <p class="prompt-desc text-xs text-slate-300">
+              Team 1 is currently configuring match settings on their phone. When they start, this screen will <strong>instantly jump directly into the game</strong>!
+            </p>
+            <div class="p2p-status-pill p2p-status-waiting mt-3" style="margin-top: 12px;">
+              ⏳ Ready & waiting for Team 1...
+            </div>
+          </div>
+
+          <button id="btn-leave-p2p-lobby" type="button" class="btn-ghost text-xs text-red-400 py-2" style="justify-content: center; width: 100%; max-width: 320px; color: #f87171;">
+            ✕ Disconnect & Leave Party
+          </button>
         </div>
       </section>
 
