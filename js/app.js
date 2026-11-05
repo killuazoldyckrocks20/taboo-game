@@ -18,7 +18,8 @@ const TabooApp = {
     soundEnabled: true,
     vibrationEnabled: true,
     recordAudio: false,
-    configVersion: 2
+    pauseBetweenWords: false, // default disabled (rapid-fire continuous action)
+    configVersion: 3
   },
 
   // Game Match State
@@ -569,12 +570,20 @@ const TabooApp = {
 
   handleCorrect: function() {
     if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
-    this.pauseWordForScoring("correct");
+    if (this.config.pauseBetweenWords) {
+      this.pauseWordForScoring("correct");
+    } else {
+      this.scoreWordInstantly("correct");
+    }
   },
 
   handleTaboo: function() {
     if (this.state.isPaused || this.state.isWordScorePaused || !this.activeCard) return;
-    this.pauseWordForScoring("taboo");
+    if (this.config.pauseBetweenWords) {
+      this.pauseWordForScoring("taboo");
+    } else {
+      this.scoreWordInstantly("taboo");
+    }
   },
 
   handleSkip: function() {
@@ -586,7 +595,111 @@ const TabooApp = {
       return;
     }
 
-    this.pauseWordForScoring("skip");
+    if (this.config.pauseBetweenWords) {
+      this.pauseWordForScoring("skip");
+    } else {
+      this.scoreWordInstantly("skip");
+    }
+  },
+
+  // ==========================================
+  // RAPID-FIRE INSTANT WORD SCORING (NO TIMER PAUSE)
+  // Default mode: keeps gameplay adrenaline high and continuous
+  // ==========================================
+  scoreWordInstantly: function(status) {
+    if (this.state.isPaused || !this.activeCard) return;
+
+    if (this.config.gameFormat === "ffa") {
+      const clueGiver = this.getCurrentClueGiver();
+      if (status === "correct") {
+        SoundEngine.playCorrect();
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "correct",
+          originalStatus: "correct",
+          clueGiverId: clueGiver.id,
+          clueGiverName: clueGiver.name,
+          guesserId: null,
+          guesserName: null
+        });
+        this.recalculateScoresFromTurnCards();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("correct", this.activeCard.word, clueGiver.name, null, 1);
+      } else if (status === "taboo") {
+        SoundEngine.playBuzzer();
+        SoundEngine.vibrate([200, 100, 200]);
+        const penalty = this.config.tabooPenalty;
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "taboo",
+          originalStatus: "taboo",
+          clueGiverId: clueGiver.id,
+          clueGiverName: clueGiver.name
+        });
+        this.recalculateScoresFromTurnCards();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("taboo", this.activeCard.word, clueGiver.name, null, penalty);
+      } else if (status === "skip") {
+        this.state.skipsUsedThisTurn++;
+        SoundEngine.playSkip();
+        const penalty = this.config.skipPenalty;
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "skip",
+          originalStatus: "skip",
+          clueGiverId: clueGiver.id,
+          clueGiverName: clueGiver.name
+        });
+        this.recalculateScoresFromTurnCards();
+        this.updateSkipButtonLabel();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("skip", this.activeCard.word, clueGiver.name, null, penalty);
+      }
+    } else {
+      // Classic Team Mode
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      if (status === "correct") {
+        SoundEngine.playCorrect();
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "correct",
+          originalStatus: "correct",
+          teamName: currentTeam.name
+        });
+        this.recalculateScoresFromTurnCards();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("correct", this.activeCard.word, currentTeam.name, null, 1);
+      } else if (status === "taboo") {
+        SoundEngine.playBuzzer();
+        SoundEngine.vibrate([200, 100, 200]);
+        const penalty = this.config.tabooPenalty;
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "taboo",
+          originalStatus: "taboo",
+          teamName: currentTeam.name
+        });
+        this.recalculateScoresFromTurnCards();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("taboo", this.activeCard.word, currentTeam.name, null, penalty);
+      } else if (status === "skip") {
+        this.state.skipsUsedThisTurn++;
+        SoundEngine.playSkip();
+        const penalty = this.config.skipPenalty;
+        this.state.turnCards.push({
+          card: this.activeCard,
+          status: "skip",
+          originalStatus: "skip",
+          teamName: currentTeam.name
+        });
+        this.recalculateScoresFromTurnCards();
+        this.updateSkipButtonLabel();
+        this.updateTurnScorePill();
+        this.broadcastScoreEvent("skip", this.activeCard.word, currentTeam.name, null, penalty);
+      }
+    }
+
+    this.displayNextCard();
   },
 
   // ==========================================
@@ -881,7 +994,9 @@ const TabooApp = {
     let feedText = "";
     if (this.config.gameFormat === "ffa") {
       if (outcome === "correct") {
-        feedText = `✓ <strong>${targetWord}</strong>: Guessed by ${guesserName} (+1 ${clueOrTeamName}, +1 ${guesserName})`;
+        feedText = guesserName
+          ? `✓ <strong>${targetWord}</strong>: Guessed by ${guesserName} (+1 ${clueOrTeamName}, +1 ${guesserName})`
+          : `✓ <strong>${targetWord}</strong>: Correct (+1 pt to ${clueOrTeamName})`;
       } else if (outcome === "taboo") {
         feedText = `🚨 <strong>${targetWord}</strong>: Taboo foul by ${clueOrTeamName} (${points} pts)`;
       } else {
@@ -908,7 +1023,7 @@ const TabooApp = {
       players: this.state.players,
       teams: this.state.teams,
       timeLeft: this.state.timeLeft,
-      isPaused: true
+      isPaused: Boolean(this.config.pauseBetweenWords && this.state.isWordScorePaused)
     };
 
     P2PEngine.send("WORD_SCORED", payload);
@@ -1798,12 +1913,14 @@ const TabooApp = {
 
       let ffaGuesserHtml = "";
       if (this.config.gameFormat === "ffa" && item.status === "correct") {
+        const hasGuesser = Boolean(item.guesserId);
         ffaGuesserHtml = `
           <div class="flex items-center gap-2 mt-1" style="display: flex; align-items: center; gap: 6px;">
             <span class="text-xs text-slate-300 font-semibold">Guessed by:</span>
-            <select class="review-guesser-select font-bold text-xs" data-card-idx="${idx}" style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.2); color: #34d399; border-radius: 6px; padding: 2px 6px;">
-              ${this.state.players.map(p => `<option value="${p.id}" ${p.id === item.guesserId ? 'selected' : ''}>${p.name}</option>`).join("")}
-              <option value="none" ${!item.guesserId ? 'selected' : ''}>Nobody / Void</option>
+            <select class="review-guesser-select font-bold text-xs" data-card-idx="${idx}" style="background: rgba(15,23,42,0.85); border: 1px solid ${hasGuesser ? 'rgba(52, 211, 153, 0.5)' : 'rgba(251, 191, 36, 0.8)'}; color: ${hasGuesser ? '#34d399' : '#fbbf24'}; border-radius: 6px; padding: 2px 6px;">
+              ${!hasGuesser ? '<option value="unassigned" selected>⚠️ Tap to pick guesser...</option>' : ''}
+              ${this.state.players.filter(p => p.id !== item.clueGiverId).map(p => `<option value="${p.id}" ${p.id === item.guesserId ? 'selected' : ''}>${p.name}</option>`).join("")}
+              <option value="none" ${item.guesserId === null && hasGuesser ? 'selected' : ''}>Nobody / Void</option>
             </select>
           </div>
         `;
@@ -1849,7 +1966,7 @@ const TabooApp = {
       if (select) {
         select.addEventListener("change", (e) => {
           const val = e.target.value;
-          if (val === "none") {
+          if (val === "none" || val === "unassigned") {
             item.guesserId = null;
             item.guesserName = null;
           } else {
@@ -1861,8 +1978,10 @@ const TabooApp = {
             }
           }
           this.recalculateScoresFromTurnCards();
+          this.renderReviewCardsList();
           this.updateReviewScoreSummary();
           this.renderReviewFFAPlayerChanges();
+          this.saveActiveSession();
         });
       }
 
@@ -2185,11 +2304,14 @@ const TabooApp = {
       }
     } catch (e) {}
 
-    // Version migration to apply new defaults (skip = -1, taboo = -2) if upgraded or new
-    if (!this.config.configVersion || this.config.configVersion < 2) {
-      this.config.tabooPenalty = -2;
-      this.config.skipPenalty = -1;
-      this.config.configVersion = 2;
+    // Version migration to apply new defaults (skip = -1, taboo = -2, pauseBetweenWords = false) if upgraded or new
+    if (!this.config.configVersion || this.config.configVersion < 3) {
+      if (this.config.configVersion < 2) {
+        this.config.tabooPenalty = -2;
+        this.config.skipPenalty = -1;
+      }
+      this.config.pauseBetweenWords = false; // default disabled (rapid-fire continuous action)
+      this.config.configVersion = 3;
       this.saveSettings();
     }
 
@@ -2225,6 +2347,9 @@ const TabooApp = {
 
     const audioToggle = document.getElementById("toggle-record-audio");
     if (audioToggle) audioToggle.checked = Boolean(this.config.recordAudio);
+
+    const pauseWordsToggle = document.getElementById("toggle-pause-between-words");
+    if (pauseWordsToggle) pauseWordsToggle.checked = Boolean(this.config.pauseBetweenWords);
 
     const muteIcon = document.getElementById("mute-icon");
     if (muteIcon) muteIcon.textContent = SoundEngine.isMuted ? "🔇" : "🔊";
@@ -2519,6 +2644,8 @@ const TabooApp = {
       if (payload.roundHistory) this.state.roundHistory = payload.roundHistory;
       this.updateSkipButtonLabel();
       this.updateTabooButtonLabel();
+      const pauseToggle = document.getElementById("toggle-pause-between-words");
+      if (pauseToggle) pauseToggle.checked = Boolean(this.config.pauseBetweenWords);
       this.showToast("Connected to match!");
 
       this.closeModal("modal-dual-device");
@@ -2871,6 +2998,12 @@ const TabooApp = {
       } else {
         this.showToast("Audio recording disabled.");
       }
+    });
+
+    document.getElementById("toggle-pause-between-words")?.addEventListener("change", (e) => {
+      this.config.pauseBetweenWords = e.target.checked;
+      this.saveSettings();
+      this.showToast(e.target.checked ? "⏸️ Pause between words enabled" : "⚡ Rapid-fire enabled (No timer pause)");
     });
 
     // Dual Device Modal Open
