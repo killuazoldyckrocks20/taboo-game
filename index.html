@@ -295,6 +295,11 @@
             Round 1 • Turn 1
           </div>
 
+          <!-- Previous Round Changes Card (shown after turn 1) -->
+          <div id="handoff-prev-round-card" class="handoff-prev-card" style="display: none;">
+            <!-- Dynamically populated: Team or FFA format -->
+          </div>
+
           <div id="handoff-view-teams" style="width: 100%; max-width: 320px;">
             <h2 id="handoff-team-title" class="handoff-team-name">Team Orange</h2>
             <div id="handoff-team-score" class="handoff-score-badge">Current Score: 0 pts</div>
@@ -371,6 +376,11 @@
               +0 pts
             </div>
           </div>
+        </div>
+
+        <!-- Previous Round Banner While Playing -->
+        <div id="game-prev-round-banner" class="game-prev-round-banner" style="display: none;">
+          <!-- Dynamically populated: Team or FFA format -->
         </div>
 
         <!-- Circular Timer -->
@@ -540,6 +550,11 @@
             <span id="spectator-active-team-name" class="spectator-role-player" style="color: var(--team-orange); font-size: 1.15rem;">Team Orange</span>
           </div>
 
+          <!-- Spectator Previous Round Changes Card -->
+          <div id="spectator-prev-round-card" class="spectator-prev-card" style="display: none;">
+            <!-- Dynamically populated: Team or FFA format -->
+          </div>
+
           <div id="spectator-pause-alert" class="spectator-pause-banner" style="display: none;">
             ⏸️ Score Update in Progress... (Timer Paused)
           </div>
@@ -601,6 +616,16 @@
           </div>
         </div>
 
+        <!-- FFA Player Score Changes This Turn -->
+        <div id="review-ffa-player-changes" class="review-ffa-changes-card" style="display: none;">
+          <div class="review-ffa-changes-header">
+            <span>📊 PLAYER SCORE CHANGES THIS TURN</span>
+          </div>
+          <div id="review-ffa-changes-list" class="review-ffa-changes-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
         <!-- Audio Review & Dispute Player (shown if audio was recorded for this round) -->
         <div id="audio-review-player" class="audio-review-card" style="display: none;">
           <div class="audio-player-header">
@@ -649,6 +674,16 @@
 
           <div id="victory-scoreboard" class="final-scoreboard">
             <!-- Populated dynamically -->
+          </div>
+
+          <!-- Round-by-Round Breakdown Section -->
+          <div id="victory-round-history-section" class="victory-history-section" style="display: none;">
+            <div class="section-title" style="justify-content: center; margin-bottom: 10px;">
+              <span>📜 WHO GOT & LOST POINTS IN EACH ROUND</span>
+            </div>
+            <div id="victory-round-history-list" class="victory-history-list">
+              <!-- Dynamically populated with each round card -->
+            </div>
           </div>
 
           <div class="flex flex-col gap-3" style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px;">

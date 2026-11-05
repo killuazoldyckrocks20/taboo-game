@@ -3,7 +3,7 @@
  * Enables 100% offline gameplay, rapid reloading, and zero latency.
  */
 
-const CACHE_NAME = "taboo-game-v13";
+const CACHE_NAME = "taboo-game-v14";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",

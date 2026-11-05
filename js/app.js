@@ -40,6 +40,8 @@ const TabooApp = {
     isGameOver: false,
     winner: null,
     roundAudioUrl: null,
+    lastTurnResult: null,
+    roundHistory: [],
 
     // Active Turn State
     deck: [],
@@ -306,6 +308,8 @@ const TabooApp = {
     this.state.roundNumber = 1;
     this.state.isGameOver = false;
     this.state.winner = null;
+    this.state.lastTurnResult = null;
+    this.state.roundHistory = [];
 
     // Build and shuffle deck
     this.prepareDeck();
@@ -355,6 +359,8 @@ const TabooApp = {
   // HANDOFF SCREEN (PASS & PLAY)
   // ==========================================
   showHandoffScreen: function() {
+    this.renderPreviousRoundHandoffCard();
+
     const banner = document.getElementById("handoff-round-banner");
     const teamsView = document.getElementById("handoff-view-teams");
     const ffaView = document.getElementById("handoff-view-ffa");
@@ -479,6 +485,7 @@ const TabooApp = {
     this.updateTurnScorePill();
     this.updateSkipButtonLabel();
     this.updateTabooButtonLabel();
+    this.renderPreviousRoundGameBanner();
     this.showScreen("screen-game");
 
     // Audio recording (if enabled) - records in local memory on Host phone (or single phone)
@@ -1003,6 +1010,535 @@ const TabooApp = {
         list.appendChild(card);
       });
     }
+
+    this.renderPreviousRoundSpectatorCard();
+  },
+
+  // ==========================================
+  // PREVIOUS ROUND SCORE DELTAS & MATCH HISTORY
+  // ==========================================
+  computeTurnDeltas: function() {
+    if (this.config.gameFormat === "ffa") {
+      const clueGiver = this.getCurrentClueGiver();
+      const monitor = this.getCurrentMonitor();
+      const deltas = this.state.players.map(p => ({
+        player: { id: p.id, name: p.name, color: p.color },
+        delta: 0,
+        gained: 0,
+        lost: 0,
+        detailsGained: [],
+        detailsLost: []
+      }));
+
+      const cgEntry = deltas.find(d => d.player.id === clueGiver.id);
+
+      this.state.turnCards.forEach(item => {
+        const word = item.card?.word || "Word";
+        if (item.status === "correct") {
+          if (cgEntry) {
+            cgEntry.delta += 1;
+            cgEntry.gained += 1;
+            cgEntry.detailsGained.push(`Clue for "${word}" (+1)`);
+          }
+          if (item.guesserId) {
+            const gEntry = deltas.find(d => String(d.player.id) === String(item.guesserId));
+            if (gEntry) {
+              gEntry.delta += 1;
+              gEntry.gained += 1;
+              gEntry.detailsGained.push(`Guessed "${word}" (+1)`);
+            }
+          }
+        } else if (item.status === "taboo") {
+          const penalty = Math.abs(this.config.tabooPenalty);
+          if (cgEntry) {
+            cgEntry.delta -= penalty;
+            cgEntry.lost += penalty;
+            cgEntry.detailsLost.push(`Taboo foul on "${word}" (-${penalty})`);
+          }
+        } else if (item.status === "skip") {
+          const penalty = Math.abs(this.config.skipPenalty);
+          if (cgEntry) {
+            cgEntry.delta -= penalty;
+            cgEntry.lost += penalty;
+            if (penalty > 0) {
+              cgEntry.detailsLost.push(`Skipped "${word}" (-${penalty})`);
+            }
+          }
+        }
+      });
+
+      return {
+        gameFormat: "ffa",
+        clueGiver: clueGiver,
+        monitor: monitor,
+        playerDeltas: deltas
+      };
+    } else {
+      const currentTeam = this.state.teams[this.state.currentTeamIdx];
+      let gained = 0;
+      let lost = 0;
+      const detailsGained = [];
+      const detailsLost = [];
+
+      this.state.turnCards.forEach(item => {
+        const word = item.card?.word || "Word";
+        if (item.status === "correct") {
+          gained += 1;
+          detailsGained.push(`Guessed "${word}" (+1)`);
+        } else if (item.status === "taboo") {
+          const penalty = Math.abs(this.config.tabooPenalty);
+          lost += penalty;
+          detailsLost.push(`Taboo foul on "${word}" (-${penalty})`);
+        } else if (item.status === "skip") {
+          const penalty = Math.abs(this.config.skipPenalty);
+          lost += penalty;
+          if (penalty > 0) {
+            detailsLost.push(`Skipped "${word}" (-${penalty})`);
+          }
+        }
+      });
+
+      const delta = gained - lost;
+      return {
+        gameFormat: "teams",
+        team: currentTeam,
+        teamDelta: {
+          team: currentTeam,
+          delta: delta,
+          gained: gained,
+          lost: lost,
+          detailsGained: detailsGained,
+          detailsLost: detailsLost
+        }
+      };
+    }
+  },
+
+  renderPreviousRoundGameBanner: function() {
+    const bannerEl = document.getElementById("game-prev-round-banner");
+    if (!bannerEl) return;
+
+    if (!this.state.lastTurnResult) {
+      bannerEl.style.display = "none";
+      return;
+    }
+
+    const res = this.state.lastTurnResult;
+    bannerEl.style.display = "inline-flex";
+
+    if (this.config.gameFormat === "teams") {
+      const team = res.team || res.teamDelta?.team;
+      const delta = res.teamDelta ? res.teamDelta.delta : 0;
+      const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+      const ptsClass = delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral";
+      const ptsWord = Math.abs(delta) === 1 ? "pt" : "pts";
+      bannerEl.innerHTML = `
+        <span>⏮️ Previous Round:</span>
+        <span class="banner-team-name" style="color: ${team?.color || 'var(--team-orange)'}">${team?.name || 'Opponent'}</span>
+        <span>earned</span>
+        <span class="banner-pts-badge ${ptsClass}">${deltaStr} ${ptsWord}</span>
+      `;
+    } else {
+      const deltas = res.playerDeltas || [];
+      const parts = deltas.map(d => {
+        const dStr = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+        const col = d.delta > 0 ? "#34d399" : d.delta < 0 ? "#f87171" : "#94a3b8";
+        return `<span style="color:${d.player.color}; font-weight:700;">${d.player.name}</span> <span style="color:${col}; font-weight:800;">${dStr}</span>`;
+      }).join(' <span style="opacity:0.35;">•</span> ');
+
+      bannerEl.innerHTML = `<span>⏮️ Prev Round:</span> ${parts}`;
+    }
+  },
+
+  renderPreviousRoundHandoffCard: function() {
+    const cardEl = document.getElementById("handoff-prev-round-card");
+    if (!cardEl) return;
+
+    if (!this.state.lastTurnResult) {
+      cardEl.style.display = "none";
+      return;
+    }
+
+    const res = this.state.lastTurnResult;
+    cardEl.style.display = "block";
+
+    if (this.config.gameFormat === "teams") {
+      const team = res.team || res.teamDelta?.team;
+      const delta = res.teamDelta ? res.teamDelta.delta : 0;
+      const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+      const ptsClass = delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral";
+      const gained = res.teamDelta?.gained || 0;
+      const lost = res.teamDelta?.lost || 0;
+      const details = [];
+      if (gained > 0) details.push(`${gained} correct`);
+      if (lost > 0) details.push(`${lost} foul penalty`);
+      if (details.length === 0) details.push(`0 cards scored`);
+
+      cardEl.innerHTML = `
+        <div class="prev-round-header">
+          <span class="prev-round-tag">⏮️ PREVIOUS TURN RESULT</span>
+          <span class="prev-round-turn-label">${res.turnLabel || 'Previous Turn'}</span>
+        </div>
+        <div class="prev-players-list">
+          <div class="prev-player-row">
+            <div class="prev-player-info">
+              <span class="prev-player-dot" style="background: ${team?.color || 'var(--team-orange)'};"></span>
+              <span class="prev-player-name">${team?.name || 'Previous Team'}</span>
+              <span class="prev-player-details">(${details.join(', ')})</span>
+            </div>
+            <div class="prev-player-delta ${ptsClass}">
+              ${deltaStr} pts
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      const deltas = res.playerDeltas || [];
+      const rowsHtml = deltas.map(d => {
+        const deltaStr = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+        const ptsClass = d.delta > 0 ? "positive" : d.delta < 0 ? "negative" : "neutral";
+        let detailText = "";
+        if (res.clueGiver && d.player.id === res.clueGiver.id) {
+          const parts = [];
+          if (d.gained > 0) parts.push(`${d.gained} clue`);
+          if (d.lost > 0) parts.push(`-${d.lost} foul/skip`);
+          detailText = `🗣️ Clue Giver (${parts.join(', ') || '0 pts'})`;
+        } else {
+          detailText = d.gained > 0 ? `🙋‍♂️ Guessed ${d.gained} ${d.gained === 1 ? 'word' : 'words'}` : `🙋‍♂️ Guesser (0 pts)`;
+        }
+
+        return `
+          <div class="prev-player-row">
+            <div class="prev-player-info">
+              <span class="prev-player-dot" style="background: ${d.player.color};"></span>
+              <span class="prev-player-name">${d.player.name}</span>
+              <span class="prev-player-details">${detailText}</span>
+            </div>
+            <div class="prev-player-delta ${ptsClass}">
+              ${deltaStr} pts
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      cardEl.innerHTML = `
+        <div class="prev-round-header">
+          <span class="prev-round-tag">⏮️ PREVIOUS TURN SCORE CHANGES</span>
+          <span class="prev-round-turn-label">${res.turnLabel || 'Previous Turn'}</span>
+        </div>
+        <div class="prev-players-list">
+          ${rowsHtml}
+        </div>
+      `;
+    }
+  },
+
+  renderPreviousRoundSpectatorCard: function() {
+    const cardEl = document.getElementById("spectator-prev-round-card");
+    if (!cardEl) return;
+
+    if (!this.state.lastTurnResult) {
+      cardEl.style.display = "none";
+      return;
+    }
+
+    const res = this.state.lastTurnResult;
+    cardEl.style.display = "block";
+
+    if (this.config.gameFormat === "teams") {
+      const team = res.team || res.teamDelta?.team;
+      const delta = res.teamDelta ? res.teamDelta.delta : 0;
+      const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+      const ptsClass = delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral";
+
+      cardEl.innerHTML = `
+        <div class="prev-round-header">
+          <span class="prev-round-tag">⏮️ PREVIOUS ROUND RESULT</span>
+          <span class="prev-round-turn-label">${res.turnLabel || ''}</span>
+        </div>
+        <div class="prev-players-list">
+          <div class="prev-player-row">
+            <div class="prev-player-info">
+              <span class="prev-player-dot" style="background: ${team?.color || 'var(--team-orange)'};"></span>
+              <span class="prev-player-name">${team?.name || 'Previous Team'}</span>
+              <span class="prev-player-details">earned points</span>
+            </div>
+            <div class="prev-player-delta ${ptsClass}">
+              ${deltaStr} pts
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      const deltas = res.playerDeltas || [];
+      const rowsHtml = deltas.map(d => {
+        const deltaStr = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+        const ptsClass = d.delta > 0 ? "positive" : d.delta < 0 ? "negative" : "neutral";
+        let detailText = "";
+        if (res.clueGiver && d.player.id === res.clueGiver.id) {
+          detailText = `🗣️ Clue Giver`;
+        } else if (d.gained > 0) {
+          detailText = `🙋‍♂️ Guessed ${d.gained}`;
+        } else {
+          detailText = `0 pts`;
+        }
+
+        return `
+          <div class="prev-player-row">
+            <div class="prev-player-info">
+              <span class="prev-player-dot" style="background: ${d.player.color};"></span>
+              <span class="prev-player-name">${d.player.name}</span>
+              <span class="prev-player-details">${detailText}</span>
+            </div>
+            <div class="prev-player-delta ${ptsClass}">
+              ${deltaStr} pts
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      cardEl.innerHTML = `
+        <div class="prev-round-header">
+          <span class="prev-round-tag">⏮️ PREVIOUS TURN SCORE CHANGES</span>
+          <span class="prev-round-turn-label">${res.turnLabel || ''}</span>
+        </div>
+        <div class="prev-players-list">
+          ${rowsHtml}
+        </div>
+      `;
+    }
+  },
+
+  renderReviewFFAPlayerChanges: function() {
+    const container = document.getElementById("review-ffa-player-changes");
+    const listEl = document.getElementById("review-ffa-changes-list");
+    if (!container || !listEl) return;
+
+    if (this.config.gameFormat !== "ffa") {
+      container.style.display = "none";
+      return;
+    }
+
+    container.style.display = "block";
+    const turnDeltas = this.computeTurnDeltas();
+    const deltas = turnDeltas.playerDeltas || [];
+    const clueGiver = this.getCurrentClueGiver();
+
+    listEl.innerHTML = deltas.map(d => {
+      const deltaStr = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+      const ptsClass = d.delta > 0 ? "positive" : d.delta < 0 ? "negative" : "neutral";
+      let detailText = "";
+      if (clueGiver && d.player.id === clueGiver.id) {
+        const parts = [];
+        if (d.gained > 0) parts.push(`${d.gained} clue`);
+        if (d.lost > 0) parts.push(`-${d.lost} foul/skip`);
+        detailText = `🗣️ Clue Giver (${parts.join(', ') || '0 pts'})`;
+      } else {
+        detailText = d.gained > 0 ? `🙋‍♂️ Guessed ${d.gained} ${d.gained === 1 ? 'word' : 'words'}` : `🙋‍♂️ Guesser (0 pts)`;
+      }
+
+      return `
+        <div class="prev-player-row">
+          <div class="prev-player-info">
+            <span class="prev-player-dot" style="background: ${d.player.color};"></span>
+            <span class="prev-player-name">${d.player.name}</span>
+            <span class="prev-player-details">${detailText}</span>
+          </div>
+          <div class="prev-player-delta ${ptsClass}">
+            ${deltaStr} pts
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  renderVictoryRoundHistory: function() {
+    const sectionEl = document.getElementById("victory-round-history-section");
+    const listEl = document.getElementById("victory-round-history-list");
+    if (!sectionEl || !listEl) return;
+
+    const history = this.state.roundHistory || [];
+    if (history.length === 0) {
+      sectionEl.style.display = "none";
+      return;
+    }
+
+    sectionEl.style.display = "flex";
+    listEl.innerHTML = "";
+
+    history.forEach((rec) => {
+      const card = document.createElement("div");
+      card.className = "victory-history-card";
+
+      const cards = rec.cards || [];
+      const correctCards = cards.filter(c => c.status === "correct");
+      const tabooCards = cards.filter(c => c.status === "taboo");
+      const skipCards = cards.filter(c => c.status === "skip");
+
+      if (rec.gameFormat === "ffa") {
+        const cg = rec.clueGiver;
+        const mon = rec.monitor;
+
+        // Points Gained items
+        const gainedItems = [];
+        if (correctCards.length > 0 && cg) {
+          const cgWords = correctCards.map(c => `<em>${c.word}</em>`);
+          gainedItems.push(`
+            <div class="victory-history-item item-gain">
+              🗣️ <strong>${cg.name} (Clue Giver)</strong>: <span style="color:#34d399; font-weight:800;">+${correctCards.length} pts</span>
+              <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">Words given: ${cgWords.join(", ")}</div>
+            </div>
+          `);
+        }
+
+        // Group correct words by guesser
+        const guesserMap = {};
+        correctCards.forEach(c => {
+          if (c.guesserId) {
+            if (!guesserMap[c.guesserId]) {
+              guesserMap[c.guesserId] = { name: c.guesserName || "Guesser", words: [] };
+            }
+            guesserMap[c.guesserId].words.push(c.word);
+          }
+        });
+
+        Object.values(guesserMap).forEach(g => {
+          const gWords = g.words.map(w => `<em>${w}</em>`);
+          gainedItems.push(`
+            <div class="victory-history-item item-gain">
+              🙋‍♂️ <strong>${g.name}</strong>: <span style="color:#34d399; font-weight:800;">+${g.words.length} pts</span>
+              <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">Guessed: ${gWords.join(", ")}</div>
+            </div>
+          `);
+        });
+
+        // Points Lost items
+        const lostItems = [];
+        if (tabooCards.length > 0 && cg) {
+          const penalty = tabooCards.length * Math.abs(this.config.tabooPenalty);
+          const tWords = tabooCards.map(c => `<em>${c.word}</em>`);
+          lostItems.push(`
+            <div class="victory-history-item item-loss">
+              🚨 <strong>${cg.name}</strong>: <span style="color:#f87171; font-weight:800;">-${penalty} pts</span>
+              <div style="font-size:0.75rem; color:#fca5a5; margin-top:2px;">Taboo violations: ${tWords.join(", ")}</div>
+            </div>
+          `);
+        }
+
+        if (skipCards.length > 0 && cg && Math.abs(this.config.skipPenalty) > 0) {
+          const penalty = skipCards.length * Math.abs(this.config.skipPenalty);
+          const sWords = skipCards.map(c => `<em>${c.word}</em>`);
+          lostItems.push(`
+            <div class="victory-history-item item-loss">
+              ↷ <strong>${cg.name}</strong>: <span style="color:#f87171; font-weight:800;">-${penalty} pts</span>
+              <div style="font-size:0.75rem; color:#fca5a5; margin-top:2px;">Skipped: ${sWords.join(", ")}</div>
+            </div>
+          `);
+        }
+
+        // Net deltas chips
+        const deltas = rec.playerDeltas || [];
+        const chipsHtml = deltas.map(d => {
+          const dStr = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+          const col = d.delta > 0 ? "#34d399" : d.delta < 0 ? "#f87171" : "#94a3b8";
+          return `
+            <span class="victory-delta-chip">
+              <span style="width:8px;height:8px;border-radius:50%;background:${d.player.color};display:inline-block;"></span>
+              <span>${d.player.name}:</span>
+              <span style="color:${col}; font-weight:800;">${dStr} pts</span>
+            </span>
+          `;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="victory-history-card-header">
+            <span class="victory-history-turn-title">${rec.turnLabel}</span>
+            <span class="victory-history-roles">🗣️ ${cg?.name || 'Clue Giver'} &nbsp;•&nbsp; 🚨 ${mon?.name || 'Monitor'}</span>
+          </div>
+
+          <div class="victory-history-section-title gain">
+            <span>🟢 Points Gained (Who Got Points)</span>
+          </div>
+          ${gainedItems.length > 0 ? gainedItems.join('') : '<div class="victory-history-empty">No points gained this turn</div>'}
+
+          <div class="victory-history-section-title loss">
+            <span>🔴 Points Lost (Who Lost Points)</span>
+          </div>
+          ${lostItems.length > 0 ? lostItems.join('') : '<div class="victory-history-empty">✨ No points lost! Clean turn</div>'}
+
+          <div class="victory-history-deltas-bar">
+            ${chipsHtml}
+          </div>
+        `;
+      } else {
+        // Team mode
+        const team = rec.team || rec.teamDelta?.team;
+        const gainedItems = [];
+        if (correctCards.length > 0) {
+          const cWords = correctCards.map(c => `<em>${c.word}</em>`);
+          gainedItems.push(`
+            <div class="victory-history-item item-gain">
+              ✓ <strong>${team?.name}</strong>: <span style="color:#34d399; font-weight:800;">+${correctCards.length} pts</span>
+              <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">Guessed: ${cWords.join(", ")}</div>
+            </div>
+          `);
+        }
+
+        const lostItems = [];
+        if (tabooCards.length > 0) {
+          const penalty = tabooCards.length * Math.abs(this.config.tabooPenalty);
+          const tWords = tabooCards.map(c => `<em>${c.word}</em>`);
+          lostItems.push(`
+            <div class="victory-history-item item-loss">
+              🚨 <strong>${team?.name}</strong>: <span style="color:#f87171; font-weight:800;">-${penalty} pts</span>
+              <div style="font-size:0.75rem; color:#fca5a5; margin-top:2px;">Taboo violations: ${tWords.join(", ")}</div>
+            </div>
+          `);
+        }
+
+        if (skipCards.length > 0 && Math.abs(this.config.skipPenalty) > 0) {
+          const penalty = skipCards.length * Math.abs(this.config.skipPenalty);
+          const sWords = skipCards.map(c => `<em>${c.word}</em>`);
+          lostItems.push(`
+            <div class="victory-history-item item-loss">
+              ↷ <strong>${team?.name}</strong>: <span style="color:#f87171; font-weight:800;">-${penalty} pts</span>
+              <div style="font-size:0.75rem; color:#fca5a5; margin-top:2px;">Skipped: ${sWords.join(", ")}</div>
+            </div>
+          `);
+        }
+
+        const delta = rec.teamDelta ? rec.teamDelta.delta : 0;
+        const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+        const col = delta > 0 ? "#34d399" : delta < 0 ? "#f87171" : "#94a3b8";
+
+        card.innerHTML = `
+          <div class="victory-history-card-header">
+            <span class="victory-history-turn-title">${rec.turnLabel}</span>
+            <span class="victory-history-roles" style="color:${team?.color || 'var(--team-orange)'}; font-weight:bold;">${team?.name}</span>
+          </div>
+
+          <div class="victory-history-section-title gain">
+            <span>🟢 Points Gained</span>
+          </div>
+          ${gainedItems.length > 0 ? gainedItems.join('') : '<div class="victory-history-empty">No points gained this turn</div>'}
+
+          <div class="victory-history-section-title loss">
+            <span>🔴 Points Lost</span>
+          </div>
+          ${lostItems.length > 0 ? lostItems.join('') : '<div class="victory-history-empty">✨ Clean turn! No fouls or skips</div>'}
+
+          <div class="victory-history-deltas-bar">
+            <span class="victory-delta-chip">
+              <span style="width:8px;height:8px;border-radius:50%;background:${team?.color || '#f97316'};display:inline-block;"></span>
+              <span>Net Turn Score:</span>
+              <span style="color:${col}; font-weight:800;">${deltaStr} pts</span>
+            </span>
+          </div>
+        `;
+      }
+
+      listEl.appendChild(card);
+    });
   },
 
   updateSkipButtonLabel: function() {
@@ -1180,6 +1716,7 @@ const TabooApp = {
 
     this.renderReviewCardsList();
     this.updateReviewScoreSummary();
+    this.renderReviewFFAPlayerChanges();
     this.showScreen("screen-review");
     this.saveActiveSession();
   },
@@ -1299,6 +1836,7 @@ const TabooApp = {
           this.recalculateScoresFromTurnCards();
           this.renderReviewCardsList();
           this.updateReviewScoreSummary();
+          this.renderReviewFFAPlayerChanges();
           this.saveActiveSession();
 
           if (P2PEngine.isConnected) {
@@ -1324,6 +1862,7 @@ const TabooApp = {
           }
           this.recalculateScoresFromTurnCards();
           this.updateReviewScoreSummary();
+          this.renderReviewFFAPlayerChanges();
         });
       }
 
@@ -1361,6 +1900,40 @@ const TabooApp = {
 
     this.recalculateScoresFromTurnCards();
 
+    // Compute turn deltas and record in match history
+    const turnDeltas = this.computeTurnDeltas();
+    const isFFA = (this.config.gameFormat === "ffa");
+    const clueGiver = isFFA ? this.getCurrentClueGiver() : null;
+    const monitor = isFFA ? this.getCurrentMonitor() : null;
+    const currentTeam = !isFFA ? this.state.teams[this.state.currentTeamIdx] : null;
+
+    const turnRecord = {
+      roundNumber: this.state.roundNumber,
+      turnNumber: isFFA ? (this.state.ffaTurnIndex + 1) : (this.state.currentTeamIdx + 1),
+      turnLabel: isFFA 
+        ? `Round ${this.state.roundNumber} • Turn ${this.state.ffaTurnIndex + 1}`
+        : `Round ${this.state.roundNumber} • Turn ${this.state.currentTeamIdx + 1} (${currentTeam.name})`,
+      gameFormat: this.config.gameFormat,
+      clueGiver: clueGiver ? { id: clueGiver.id, name: clueGiver.name, color: clueGiver.color } : null,
+      monitor: monitor ? { id: monitor.id, name: monitor.name, color: monitor.color } : null,
+      team: currentTeam ? { id: currentTeam.id, name: currentTeam.name, color: currentTeam.color } : null,
+      playerDeltas: turnDeltas.playerDeltas || null,
+      teamDelta: turnDeltas.teamDelta || null,
+      cards: this.state.turnCards.map(tc => ({
+        word: tc.card?.word || "",
+        category: tc.card?.category || "",
+        status: tc.status,
+        guesserId: tc.guesserId || null,
+        guesserName: tc.guesserName || null,
+        clueGiverId: tc.clueGiverId || null,
+        clueGiverName: tc.clueGiverName || null
+      }))
+    };
+
+    this.state.lastTurnResult = turnRecord;
+    if (!this.state.roundHistory) this.state.roundHistory = [];
+    this.state.roundHistory.push(turnRecord);
+
     if (this.config.gameFormat === "ffa") {
       this.state.players.forEach(p => p.baseScore = p.score);
 
@@ -1396,7 +1969,9 @@ const TabooApp = {
           gameFormat: "ffa",
           players: this.state.players,
           ffaTurnIndex: this.state.ffaTurnIndex,
-          roundNumber: this.state.roundNumber
+          roundNumber: this.state.roundNumber,
+          lastTurnResult: this.state.lastTurnResult,
+          roundHistory: this.state.roundHistory
         });
       }
 
@@ -1405,7 +1980,6 @@ const TabooApp = {
     }
 
     // Classic Team Mode
-    const currentTeam = this.state.teams[this.state.currentTeamIdx];
     this.state.teams.forEach(t => t.baseScore = t.score);
 
     // Check if target score reached (only if playing in Points Mode)
@@ -1436,7 +2010,9 @@ const TabooApp = {
         gameFormat: "teams",
         teams: this.state.teams,
         currentTeamIdx: this.state.currentTeamIdx,
-        roundNumber: this.state.roundNumber
+        roundNumber: this.state.roundNumber,
+        lastTurnResult: this.state.lastTurnResult,
+        roundHistory: this.state.roundHistory
       });
     }
 
@@ -1480,9 +2056,20 @@ const TabooApp = {
       });
     }
 
+    this.renderVictoryRoundHistory();
     this.showScreen("screen-victory");
     ConfettiEngine.fire(5000);
     SoundEngine.playVictory();
+
+    if (P2PEngine.isConnected && P2PEngine.role === "host") {
+      P2PEngine.send("MATCH_VICTORY", {
+        winningTarget: winningTarget,
+        teams: this.state.teams,
+        players: this.state.players,
+        gameFormat: this.config.gameFormat,
+        roundHistory: this.state.roundHistory
+      });
+    }
   },
 
   // ==========================================
@@ -1716,7 +2303,9 @@ const TabooApp = {
       const sessionData = {
         config: this.config,
         teams: this.state.teams,
+        players: this.state.players,
         currentTeamIdx: this.state.currentTeamIdx,
+        ffaTurnIndex: this.state.ffaTurnIndex,
         roundNumber: this.state.roundNumber,
         deck: this.state.deck,
         currentCardIdx: this.state.currentCardIdx,
@@ -1725,6 +2314,8 @@ const TabooApp = {
         timeLeft: this.state.timeLeft,
         skipsUsedThisTurn: this.state.skipsUsedThisTurn,
         turnCards: this.state.turnCards,
+        lastTurnResult: this.state.lastTurnResult,
+        roundHistory: this.state.roundHistory,
         savedAt: Date.now()
       };
       localStorage.setItem("taboo_active_session", JSON.stringify(sessionData));
@@ -1813,7 +2404,9 @@ const TabooApp = {
     // Restore configuration and state
     if (session.config) Object.assign(this.config, session.config);
     this.state.teams = session.teams;
+    if (session.players) this.state.players = session.players;
     this.state.currentTeamIdx = session.currentTeamIdx || 0;
+    if (session.ffaTurnIndex !== undefined) this.state.ffaTurnIndex = session.ffaTurnIndex;
     this.state.roundNumber = session.roundNumber || 1;
     this.state.deck = session.deck || [];
     this.state.currentCardIdx = session.currentCardIdx || 0;
@@ -1821,6 +2414,8 @@ const TabooApp = {
     this.state.skipsUsedThisTurn = session.skipsUsedThisTurn || 0;
     this.state.isGameOver = false;
     this.state.winner = null;
+    this.state.lastTurnResult = session.lastTurnResult || null;
+    this.state.roundHistory = session.roundHistory || [];
 
     if (session.currentScreen === "screen-game" && session.activeCard) {
       // Reconstitute in-flight turn in PAUSED state
@@ -1909,7 +2504,9 @@ const TabooApp = {
         activeCard: this.activeCard,
         timeLeft: this.state.timeLeft,
         currentTeamIdx: this.state.currentTeamIdx,
-        roundNumber: this.state.roundNumber
+        roundNumber: this.state.roundNumber,
+        lastTurnResult: this.state.lastTurnResult,
+        roundHistory: this.state.roundHistory
       });
     });
 
@@ -1918,6 +2515,8 @@ const TabooApp = {
       if (payload.teams) this.state.teams = payload.teams;
       if (payload.players) this.state.players = payload.players;
       if (payload.ffaTurnIndex !== undefined) this.state.ffaTurnIndex = payload.ffaTurnIndex;
+      if (payload.lastTurnResult !== undefined) this.state.lastTurnResult = payload.lastTurnResult;
+      if (payload.roundHistory) this.state.roundHistory = payload.roundHistory;
       this.updateSkipButtonLabel();
       this.updateTabooButtonLabel();
       this.showToast("Connected to match!");
@@ -2069,6 +2668,8 @@ const TabooApp = {
     });
 
     P2PEngine.on("CONFIRM_SCORE", (payload) => {
+      if (payload.lastTurnResult !== undefined) this.state.lastTurnResult = payload.lastTurnResult;
+      if (payload.roundHistory) this.state.roundHistory = payload.roundHistory;
       if (payload.gameFormat === "ffa") {
         if (payload.players) this.state.players = payload.players;
         this.state.ffaTurnIndex = payload.ffaTurnIndex || 0;
@@ -2080,6 +2681,14 @@ const TabooApp = {
       this.state.currentTeamIdx = payload.currentTeamIdx;
       this.state.roundNumber = payload.roundNumber;
       this.showHandoffScreen();
+    });
+
+    P2PEngine.on("MATCH_VICTORY", (payload) => {
+      if (payload.teams) this.state.teams = payload.teams;
+      if (payload.players) this.state.players = payload.players;
+      if (payload.gameFormat) this.config.gameFormat = payload.gameFormat;
+      if (payload.roundHistory) this.state.roundHistory = payload.roundHistory;
+      this.triggerVictory(payload.winningTarget);
     });
   },
 
